@@ -1,0 +1,163 @@
+# Notme — Implementation Plan
+
+> Status: **approved** on 2026-10-21 (approval given by starting Phase 1).
+> Source of truth for scope: the project brief. Phase prompts: `NOTME_PROMPTS.md` (the project brief calls it `PROMPTS.md`; same file).
+
+## Progress
+
+- [x] **Phase 0** — Plan, verify rules, learning roadmap
+- [x] **Phase 1** — Scaffold and run the app (mock screens)
+- [ ] **Phase 2** — User flows with local mock data
+- [ ] **Phase 3** — Supabase schema, RLS, database functions
+- [ ] **Phase 4** — Authentication and trusted-family pairing
+- [ ] **Phase 5** — Create requests and deliver to the linked family member
+- [ ] **Phase 6** — Approve/reject and real-time status updates
+- [ ] **Phase 7** — Timeout, warnings, accessibility, failure handling
+- [ ] **Phase 8** — Tests, complete learning guide, demo script
+- [ ] **Phase 9** — Deployment and hackathon readiness
+
+---
+
+## 1. Architecture
+
+```
+ Elder's browser                       Family member's browser
+ React + TypeScript (static files)     same app, different account
+           │  supabase-js  (publishable key + the user's login token)
+           ▼                                   ▼
+ ┌──────────────────────────────────────────────────────────┐
+ │ Supabase                                                 │
+ │  Auth      – who is signed in                            │
+ │  Postgres  – tables + Row Level Security (who may READ)  │
+ │            – small SQL functions (the ONLY way to WRITE) │
+ │  Realtime  – pushes row changes to open screens          │
+ └──────────────────────────────────────────────────────────┘
+```
+
+**Golden rule: all reads go through RLS; all writes go through narrowly scoped SQL functions.** Tables get SELECT policies only.
+
+| Technology | Purpose |
+|---|---|
+| Vite | Dev server + bundler that turns our source into static files |
+| React | Builds the UI from small components that re-render when data changes |
+| TypeScript | Adds types so mistakes are caught before running |
+| oxlint | Fast linter (ships with the current Vite template; replaces ESLint from the draft plan — one package instead of several) |
+| Vitest + Testing Library + jsdom | Automated unit/component tests |
+| Supabase Auth / Postgres / RLS / Realtime | Accounts, data, access control, live updates (from Phase 3) |
+| Static host (Vercel / Netlify / Cloudflare Pages — chosen in Phase 9) | Public URL |
+
+**Deliberately avoided:** custom backend server, Redux/state libraries, UI component libraries, router (screen chosen by role + a `view` state; revisit only if needed), notifications/SMS, payment APIs, AI APIs, local Docker Supabase for daily work (kept only as offline backup).
+
+## 2. Phases and files
+
+| Phase | Creates (C) / Modifies (M) |
+|---|---|
+| 0 | C `docs/PLAN.md`, `docs/BUILD_LOG.md`, `docs/LEARNING_GUIDE.md` |
+| 1 | C `package.json`, `vite.config.ts`, `tsconfig*.json`, `.oxlintrc.json`, `index.html`, `.gitignore`, `.env.example`, `README.md`, `public/favicon.svg`, `src/main.tsx`, `src/App.tsx`, `src/styles/global.css`, `src/types/domain.ts`, `src/mock/mockData.ts`, `src/pages/{ElderHome,CreateRequest,FamilyInbox,RequestDetail,AboutSafety}.tsx`, `src/components/{Layout,StatusBadge,RequestCard}.tsx`, `src/test/setup.ts`, tests; `git init` |
+| 2 | C `src/lib/validation.ts`, `src/lib/requestStatus.ts`, `src/mock/mockStore.ts`, `src/components/{RequestForm,StatusBanner,WarningPanel}.tsx` + tests. M pages, docs |
+| 3 | C `supabase/migrations/0001_tables.sql`, `0002_rls.sql`, `0003_functions.sql`, `supabase/tests/rls_checks.sql`. M `.env.example`, `README.md`, docs |
+| 4 | C `src/lib/supabaseClient.ts`, `src/auth/AuthProvider.tsx`, `src/pages/{SignIn,SignUp,ChooseRole,PairElder,PairFamily}.tsx`, `src/lib/api/{profile,pairing}.ts`; dep `@supabase/supabase-js`. M `App.tsx`, docs |
+| 5 | C `src/lib/api/requests.ts`. M CreateRequest, ElderHome, FamilyInbox, tests, docs |
+| 6 | C `src/hooks/useRequestUpdates.ts`, `supabase/migrations/0004_realtime.sql`. M requests API, RequestDetail, ElderHome, docs |
+| 7 | C `src/config.ts`, `src/hooks/useCountdown.ts`, `src/lib/alertSound.ts`. M WarningPanel, CSS, docs |
+| 8 | C `docs/DEMO_SCRIPT.md`, more tests. M `README.md`, `docs/LEARNING_GUIDE.md` |
+| 9 | C `docs/DISCLOSURE.md`. M README, PLAN, BUILD_LOG, DEMO_SCRIPT |
+| parallel | C `docs/USER_FLOW_FEEDBACK.md` (teammate) |
+
+## 3. Data model (draft — implemented in Phase 3)
+
+```
+profiles        id uuid PK→auth.users | role 'elder'|'family' (set once) | display_name 1–40 | created_at
+pairing_codes   code text PK (8 chars, no confusable chars) | elder_id → profiles | expires_at (now()+10 min) | used_at | used_by
+family_links    id PK | elder_id UNIQUE → profiles | family_id → profiles | created_at | CHECK elder_id <> family_id
+money_requests  id PK | elder_id | family_id (copied server-side from family_links) | amount_inr int CHECK 1..100000
+                | recipient text 3–100 | note ≤200 null | status 'pending'|'approved'|'rejected'
+                | created_at | expires_at | responded_at
+```
+
+- **RLS (read):** own profile + linked person's profile; pairing codes only to their creator; links only to their two members; requests only to their `elder_id` and `family_id`.
+- **Four UI states:** `pending`, `approved`, `rejected`, `expired`. `expired` is **derived** (`pending` and now > `expires_at`) and enforced by the respond function refusing late answers. Phase 7 decides whether to also store it.
+
+### Pairing flow (in person, before an emergency)
+1. Sign up (email + password) → `create_my_profile(role, name)` (once; role immutable).
+2. Elder: `create_pairing_code()` → shows large code + warning "only show in person, never read it out on a call".
+3. Family: `redeem_pairing_code(code)` → one transaction checks caller is family, code valid/unused/unexpired, elder not already linked → inserts `family_links`, marks code used.
+4. Both screens show who they are linked to.
+
+## 4. Request lifecycle
+
+1. **Create (elder):** client validation → `create_money_request(amount, recipient, note, timeout_seconds)`; server re-validates, looks up `family_id`, clamps timeout to 15–600 s, sets `expires_at` from **database time**, inserts `pending`.
+2. **Deliver (family):** `select` on `money_requests` — RLS returns only rows for this family member; Realtime + refetch on focus.
+3. **Respond (family):** `respond_to_request(id, decision)` = one conditional `UPDATE … WHERE id = $1 AND family_id = auth.uid() AND status = 'pending' AND expires_at > now()`; zero rows → clear error. Blocks duplicates, late answers, wrong users, reverting to pending.
+4. **Back to elder:** Realtime subscription on own request; polling every ~4 s if the channel is not subscribed; failed polls show a connection message.
+5. **Timeout:** client countdown from `expires_at` with server-clock offset; at zero → "Unconfirmed" warning, next step, best-effort Web Audio beep (unlocked by the Send tap). DB refuses later answers.
+
+**Wording:** approved = "Your linked family member confirmed this request." (never "safe"). Rejected/expired = "Pause. This request has not been confirmed. Contact your family member using a number you already trust."
+
+## 5. Risks and fallbacks
+
+| Risk | Mitigation |
+|---|---|
+| Service-role key leak | Only publishable/anon key in browser; `.env*` ignored except `.env.example`; bundle scan in Phase 8 |
+| Missing RLS | RLS on all tables; `rls_checks.sql` impersonates a third user |
+| `security definer` misuse | `auth.uid()` checks, `set search_path = ''`, revoke from `anon`/`public` |
+| Protected column edits | No INSERT/UPDATE policies; functions touch only `status`, `responded_at` |
+| Duplicate / late responses | Conditional update |
+| Pairing social engineering | In-person warning, single-use 10-min code, one link per elder, linked name on every request — limitation documented |
+| Code brute force | ~31⁸ space + 10-min life; **no rate limit** (limitation) |
+| Compromised family account | Out of scope — limitation |
+| Wrong phone clock | DB time enforces; client only displays |
+| XSS via note | React escaping; never `dangerouslySetInnerHTML` |
+| Sound blocked | Visual warning always; sound is extra |
+
+**External dependencies:** Supabase free tier (email rate limits → disable "Confirm email" for demo; inactive projects pause → open it the day before; fallback: local Docker Supabase). Realtime → polling fallback. Venue network → phone hotspot / local backup. Hosting → any static host or local dev server.
+
+**Unknowns:** Devpost submission rules (403 when fetched), exact build-window times, teammates' accounts, hosting choice.
+
+## 6. Hackyard Build 2026 — verified rules (checked 2026-10-21)
+
+Sources (pages say "Last updated: 22 September 2026"):
+- https://hackyard.org/build2026/rules
+- https://hackyard.org/build2026/guide
+- https://hackyard.org/build2026/faq
+- https://hackyard.org/build2026
+
+**Verified:**
+- 24-hour in-person hackathon, IIT Guwahati, **24–25 October 2026**. No start/end time or timezone published on these pages.
+- Pre-existing libraries, tools, designs and project foundations are **allowed if disclosed**; teams must separate pre-event work from work done in the official window; reused foundations must be meaningfully transformed onsite; **undisclosed pre-built work** is a disqualification ground. Judging focuses on onsite work.
+- AI, open source, APIs allowed "when their terms permit the use", with important dependencies disclosed. **No coding-assistant-specific rule or disclosure format** is stated.
+- Teams: solo or 2–4. Judging: Build 40 %, Problem 20 %, Ingenuity 20 %, Potential 20 %; "Judge the build, not the pitch."
+- Use synthetic, public, or authorised data; do not expose secrets.
+- Applying is free; FAQ says package pricing is emailed to selected builders. No page mentions bank details.
+
+**Not verified:** https://hackyardbuild2026.devpost.com/ returned HTTP 403 — submission requirements (repo, video, deadline, screenshots) are **unknown** until a teammate checks it in a browser. Prizes/conduct pages not read.
+
+**Implication:** all work before 24 Oct is logged as `[pre-event]` in `docs/BUILD_LOG.md`; tag the Git commit at the official start.
+
+## 7. Assumptions (accepted with the plan)
+
+1. Email + password auth; email confirmation disabled for demo; synthetic test emails (`elder1@example.com`).
+2. One trusted relative per elder; elder generates code, relative redeems.
+3. Whole rupees ₹1–₹1,00,000 (demo cap); demo timeout default 60 s, single config value.
+4. `expired` derived from `expires_at` + enforced by respond function.
+5. Realtime first, polling fallback.
+6. Prompts file stays `NOTME_PROMPTS.md`.
+
+## 8. Phase acceptance checklists
+
+### Phase 1
+- [x] `npm install` and `npm run dev` work
+- [x] App renders at 375 px and desktop width
+- [x] `npm run lint`, `npm run typecheck`, `npm test` pass
+- [x] Types `UserRole`, `RequestStatus`, `MoneyRequest` exist
+- [x] `.env*` ignored by Git (except `.env.example`)
+- [x] Git initialised; initial commit made
+
+### Phase 2
+- [ ] Create request → appears in mock inbox → approve/reject → elder sees status
+- [ ] Invalid/empty amounts rejected with helpful text
+- [ ] Waiting / approved / rejected / expired / empty / error states
+- [ ] Tests for validation and status display; mock limitation visible
+
+### Phases 3–9
+See "Done when" in `NOTME_PROMPTS.md`; checklists are added here when each phase starts.
