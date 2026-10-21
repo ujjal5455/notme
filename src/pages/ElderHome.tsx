@@ -5,6 +5,7 @@ interface ElderHomeProps {
   elder: Profile
   familyMember: Profile | undefined
   requests: MoneyRequest[]
+  nowMs: number
   onCreateRequest: () => void
   onOpenRequest: (requestId: string) => void
 }
@@ -13,6 +14,7 @@ export function ElderHome({
   elder,
   familyMember,
   requests,
+  nowMs,
   onCreateRequest,
   onOpenRequest,
 }: ElderHomeProps) {
@@ -35,7 +37,7 @@ export function ElderHome({
         <ul className="request-list">
           {requests.map((request) => (
             <li key={request.id}>
-              <RequestCard request={request} onOpen={onOpenRequest} />
+              <RequestCard request={request} nowMs={nowMs} onOpen={onOpenRequest} />
             </li>
           ))}
         </ul>

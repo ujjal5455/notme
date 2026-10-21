@@ -1,14 +1,15 @@
-# Notme — Implementation Plan
+# Flod — Implementation Plan
 
 > Status: **approved** on 2026-10-21 (approval given by starting Phase 1).
-> Source of truth for scope: the project brief. Phase prompts: `NOTME_PROMPTS.md` (the project brief calls it `PROMPTS.md`; same file).
+> Renamed from **Notme** to **Flod** on 2026-10-21 (name only; scope unchanged).
+> Source of truth for scope: the project brief. Phase prompts: `PROMPTS.md` (renamed from `NOTME_PROMPTS.md` on 2026-10-21).
 
 ## Progress
 
 - [x] **Phase 0** — Plan, verify rules, learning roadmap
 - [x] **Phase 1** — Scaffold and run the app (mock screens)
-- [ ] **Phase 2** — User flows with local mock data
-- [ ] **Phase 3** — Supabase schema, RLS, database functions
+- [x] **Phase 2** — User flows with local mock data
+- [x] **Phase 3** — Supabase schema, RLS, database functions
 - [ ] **Phase 4** — Authentication and trusted-family pairing
 - [ ] **Phase 5** — Create requests and deliver to the linked family member
 - [ ] **Phase 6** — Approve/reject and real-time status updates
@@ -54,12 +55,12 @@
 |---|---|
 | 0 | C `docs/PLAN.md`, `docs/BUILD_LOG.md`, `docs/LEARNING_GUIDE.md` |
 | 1 | C `package.json`, `vite.config.ts`, `tsconfig*.json`, `.oxlintrc.json`, `index.html`, `.gitignore`, `.env.example`, `README.md`, `public/favicon.svg`, `src/main.tsx`, `src/App.tsx`, `src/styles/global.css`, `src/types/domain.ts`, `src/mock/mockData.ts`, `src/pages/{ElderHome,CreateRequest,FamilyInbox,RequestDetail,AboutSafety}.tsx`, `src/components/{Layout,StatusBadge,RequestCard}.tsx`, `src/test/setup.ts`, tests; `git init` |
-| 2 | C `src/lib/validation.ts`, `src/lib/requestStatus.ts`, `src/mock/mockStore.ts`, `src/components/{RequestForm,StatusBanner,WarningPanel}.tsx` + tests. M pages, docs |
-| 3 | C `supabase/migrations/0001_tables.sql`, `0002_rls.sql`, `0003_functions.sql`, `supabase/tests/rls_checks.sql`. M `.env.example`, `README.md`, docs |
+| 2 | C `src/lib/validation.ts`, `src/lib/requestStatus.ts`, `src/mock/mockStore.ts`, `src/components/{RequestForm,StatusBanner,WarningPanel,FamilyResponse}.tsx`, **`src/config.ts`, `src/hooks/useNow.ts`** (pulled forward from Phase 7: the expired state needs a timeout value and a ticking clock) + tests. M pages, `App.tsx`, `Layout.tsx`, CSS, docs |
+| 3 | C `supabase/migrations/0001_tables.sql`, `0002_rls.sql`, `0003_functions.sql`, `supabase/checks/rls_checks.sql` (not `supabase/tests/`, which the Supabase CLI reserves for pgTAP). M `.env.example`, `README.md`, docs |
 | 4 | C `src/lib/supabaseClient.ts`, `src/auth/AuthProvider.tsx`, `src/pages/{SignIn,SignUp,ChooseRole,PairElder,PairFamily}.tsx`, `src/lib/api/{profile,pairing}.ts`; dep `@supabase/supabase-js`. M `App.tsx`, docs |
 | 5 | C `src/lib/api/requests.ts`. M CreateRequest, ElderHome, FamilyInbox, tests, docs |
 | 6 | C `src/hooks/useRequestUpdates.ts`, `supabase/migrations/0004_realtime.sql`. M requests API, RequestDetail, ElderHome, docs |
-| 7 | C `src/config.ts`, `src/hooks/useCountdown.ts`, `src/lib/alertSound.ts`. M WarningPanel, CSS, docs |
+| 7 | C `src/hooks/useCountdown.ts`, `src/lib/alertSound.ts`. M `src/config.ts`, WarningPanel, CSS, docs |
 | 8 | C `docs/DEMO_SCRIPT.md`, more tests. M `README.md`, `docs/LEARNING_GUIDE.md` |
 | 9 | C `docs/DISCLOSURE.md`. M README, PLAN, BUILD_LOG, DEMO_SCRIPT |
 | parallel | C `docs/USER_FLOW_FEEDBACK.md` (teammate) |
@@ -77,6 +78,7 @@ money_requests  id PK | elder_id | family_id (copied server-side from family_lin
 
 - **RLS (read):** own profile + linked person's profile; pairing codes only to their creator; links only to their two members; requests only to their `elder_id` and `family_id`.
 - **Four UI states:** `pending`, `approved`, `rejected`, `expired`. `expired` is **derived** (`pending` and now > `expires_at`) and enforced by the respond function refusing late answers. Phase 7 decides whether to also store it.
+- **As built (Phase 3):** matches this draft. Additions: `pairing_codes.used_by` cascades on delete; `money_requests` has `responded_matches_status`, `not_self` and `expiry_after_creation` checks; `pgcrypto` used for random codes.
 
 ### Pairing flow (in person, before an emergency)
 1. Sign up (email + password) → `create_my_profile(role, name)` (once; role immutable).
@@ -141,7 +143,7 @@ Sources (pages say "Last updated: 22 September 2026"):
 3. Whole rupees ₹1–₹1,00,000 (demo cap); demo timeout default 60 s, single config value.
 4. `expired` derived from `expires_at` + enforced by respond function.
 5. Realtime first, polling fallback.
-6. Prompts file stays `NOTME_PROMPTS.md`.
+6. Prompts file renamed to `PROMPTS.md` (matches the project brief) when the project was renamed to Flod.
 
 ## 8. Phase acceptance checklists
 
@@ -154,10 +156,19 @@ Sources (pages say "Last updated: 22 September 2026"):
 - [x] Git initialised; initial commit made
 
 ### Phase 2
-- [ ] Create request → appears in mock inbox → approve/reject → elder sees status
-- [ ] Invalid/empty amounts rejected with helpful text
-- [ ] Waiting / approved / rejected / expired / empty / error states
-- [ ] Tests for validation and status display; mock limitation visible
+- [x] Create request → appears in mock inbox → approve/reject → elder sees status
+- [x] Invalid/empty amounts rejected with helpful text
+- [x] Waiting / approved / rejected / expired / empty / error states
+- [x] Tests for validation and status display; mock limitation visible (header banner + README)
 
-### Phases 3–9
-See "Done when" in `NOTME_PROMPTS.md`; checklists are added here when each phase starts.
+### Phase 3
+- [x] Migrations in `supabase/migrations/` are reviewable and repeatable (applied twice in a row without errors on PGlite / PostgreSQL 18)
+- [x] RLS enabled on every table; least-privilege SELECT policies only
+- [x] Writes only via narrowly scoped `security definer` functions (same rules as `src/mock/mockStore.ts`)
+- [x] `supabase/checks/rls_checks.sql`: 36 checks incl. a third unrelated account and a second elder; 36/36 PASS on PGlite with a Supabase stand-in
+- [x] No secret in frontend code, Git history or `.env.example`
+- [x] Remote DB state reported honestly: **not yet applied to a real Supabase project** (user does README steps 1–6)
+- [ ] User applies migrations on their Supabase project and sees 36 × PASS (manual, pending)
+
+### Phases 4–9
+See "Done when" in `PROMPTS.md`; checklists are added here when each phase starts.

@@ -1,9 +1,9 @@
 export function AboutSafety() {
   return (
     <section aria-labelledby="about-title">
-      <h1 id="about-title">How Notme keeps you safe</h1>
+      <h1 id="about-title">How Flod keeps you safe</h1>
       <p>
-        Scammers can copy a family member&apos;s voice and ask you for money urgently. Notme does
+        Scammers can copy a family member&apos;s voice and ask you for money urgently. Flod does
         not try to detect fake voices. Instead, it lets you check the exact request with your
         family member through a separate app they already set up with you.
       </p>
@@ -23,7 +23,7 @@ export function AboutSafety() {
         </li>
       </ul>
 
-      <h2>What Notme does not do</h2>
+      <h2>What Flod does not do</h2>
       <ul className="plain-list">
         <li>It never sends real money.</li>
         <li>It does not listen to or block phone calls.</li>

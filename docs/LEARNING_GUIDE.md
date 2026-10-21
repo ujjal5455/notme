@@ -1,19 +1,19 @@
-# Notme — Learning Guide
+# Flod — Learning Guide
 
-This guide grows after every phase. By the end it should let you rebuild Notme **from an empty folder without AI**. Read it in order; each section says which phase filled it in.
+This guide grows after every phase. By the end it should let you rebuild Flod **from an empty folder without AI**. Read it in order; each section says which phase filled it in.
 
 | # | Section | Status |
 |---|---|---|
 | 1 | Prerequisites and environment setup | ✅ Phase 1 |
 | 2 | JavaScript and TypeScript basics used by the app | 🟡 started Phase 1 (more in 2, 5) |
-| 3 | React components, props, state, events and forms | 🟡 started Phase 1 (forms in Phase 2) |
-| 4 | Request/domain types and state transitions | 🟡 types in Phase 1; transitions Phase 2 |
-| 5 | SQL schema, relations, constraints and migrations | ⏳ Phase 3 |
-| 6 | Authentication, roles, pairing and authorization | ⏳ Phase 4 |
-| 7 | Row Level Security and safe approval/rejection | ⏳ Phases 3, 6 |
+| 3 | React components, props, state, events and forms | ✅ Phases 1–2 |
+| 4 | Request/domain types and state transitions | ✅ Phases 1–2 (database version in Phase 3) |
+| 5 | SQL schema, relations, constraints and migrations | ✅ Phase 3 |
+| 6 | Authentication, roles, pairing and authorization | 🟡 concepts + database side in Phase 3; app side Phase 4 |
+| 7 | Row Level Security and safe approval/rejection | 🟡 database side in Phase 3; app side Phase 6 |
 | 8 | Request lifecycle and database reads/writes | ⏳ Phase 5 |
 | 9 | Realtime subscriptions or polling and cleanup | ⏳ Phase 6 |
-| 10 | Timeout, visual/audio warnings and failure handling | ⏳ Phase 7 |
+| 10 | Timeout, visual/audio warnings and failure handling | 🟡 derived expiry + visual warning in Phase 2; rest Phase 7 |
 | 11 | Tests, debugging, deployment and environment variables | 🟡 tests started Phase 1; rest Phases 8–9 |
 | 12 | Diagrams, glossary, common errors, exercises, rebuild checklist, judge Q&A | 🟡 glossary started; completed Phase 8 |
 
@@ -21,7 +21,7 @@ This guide grows after every phase. By the end it should let you rebuild Notme *
 
 ## The big picture (read first)
 
-Notme has one job: before an elder pays an urgent request, a family member **they linked in advance** confirms the exact amount and recipient on **their own device**. Each request is in one of four states:
+Flod has one job: before an elder pays an urgent request, a family member **they linked in advance** confirms the exact amount and recipient on **their own device**. Each request is in one of four states:
 
 | State | Meaning | What the elder should do |
 |---|---|---|
@@ -45,8 +45,8 @@ git --version
 **Create the project from nothing (what Phase 1 did):**
 
 ```bash
-npm create vite@latest notme -- --template react-ts
-cd notme
+npm create vite@latest flod -- --template react-ts
+cd flod
 npm install
 npm install -D vitest jsdom @testing-library/react @testing-library/jest-dom
 npm run dev
@@ -202,7 +202,8 @@ const [view, setView] = useState<View>({ name: 'elderHome' })
 - `UserRole = 'elder' | 'family'`
 - `RequestStatus = 'pending' | 'approved' | 'rejected' | 'expired'`
 - `MoneyRequest`: one request. `amountInr` is a **whole number of rupees**, because decimals in JavaScript can round badly (`0.1 + 0.2` gives `0.30000000000000004`).
-- `expired` will be **calculated** from `expiresAt` in later phases, not stored.
+- `expired` is **calculated** from `expiresAt`, not stored (see Phase 2 below).
+- `StoredStatus` = what is saved (`pending | approved | rejected`); `RequestStatus` = what is shown (adds `expired`).
 
 ---
 
@@ -246,10 +247,10 @@ We find elements **by role and visible text**, the way a user (or screen reader)
 | `src/components/StatusBadge.tsx` | Status as text + symbol | `status` → badge | Showing colour only | Change an icon |
 | `src/components/RequestCard.tsx` | Tappable summary of one request | `request`, `onOpen` | Putting `<div>` inside `<button>` (invalid HTML; we use `<span>`) | Show the note on the card |
 | `src/pages/ElderHome.tsx` | Greeting, main action, elder's requests | elder, family, requests, callbacks | Forgetting the empty state | — |
-| `src/pages/CreateRequest.tsx` | Form layout; honestly says nothing is sent yet | family, `onCancel` | Inputs without `<label htmlFor>` | — |
+| `src/pages/CreateRequest.tsx` | Page around the form (Phase 2: the form itself moved to `RequestForm`) | family, `onSubmit`, `onCancel` | Inputs without `<label htmlFor>` | — |
 | `src/pages/FamilyInbox.tsx` | Requests assigned to the family member | family, requests, `onOpenRequest` | — | — |
 | `src/pages/RequestDetail.tsx` | Full details + warning for rejected/expired (elder view) | request, people, viewer role | Wording that claims "scam" or "safe" | — |
-| `src/pages/AboutSafety.tsx` | What answers mean, what Notme does NOT do | — | Overclaiming | — |
+| `src/pages/AboutSafety.tsx` | What answers mean, what Flod does NOT do | — | Overclaiming | — |
 | `src/styles/global.css` | All styling, mobile-first | — | Fixed pixel widths that overflow phones | — |
 | `src/test/setup.ts` | Test helpers: jest-dom matchers, cleanup, `scrollTo` stub | — | — | — |
 | `*.test.ts(x)` | Automated checks | — | Testing CSS class names instead of what the user sees | — |
@@ -280,10 +281,10 @@ We find elements **by role and visible text**, the way a user (or screen reader)
 
 ## Phase 1 exercises (do these without AI)
 
-1. **Footer.** Create `src/components/Footer.tsx` that shows "Notme prototype · synthetic data". Render it at the bottom of `Layout`, style it with small muted text, and make sure `npm run lint`, `npm run typecheck` and `npm test` still pass.
+1. **Footer.** Create `src/components/Footer.tsx` that shows "Flod prototype · synthetic data". Render it at the bottom of `Layout`, style it with small muted text, and make sure `npm run lint`, `npm run typecheck` and `npm test` still pass.
 2. **New mock request.** Add a fifth mock request for ₹999 with status `pending`. Where does it appear, and why does it appear in *both* the elder and family lists?
 3. **Break it on purpose.** In `RequestCard.tsx`, change `request.amountInr` to `request.amount`. Run `npm run typecheck`. Read the error and explain it in your own words, then undo the change.
-4. **Test it.** Write a test that switches to Family, opens the ₹25,000 request, and checks that the text "Confirm and Reject buttons are added in Phase 2." appears.
+4. **Test it.** Write a test that switches to Family, opens the ₹25,000 request, and checks that a "Confirm request" button appears. (Updated after Phase 2 added the buttons.)
 
 *(Answers aren't included. Try first, then ask a teammate or your reviewer.)*
 
@@ -300,6 +301,397 @@ We find elements **by role and visible text**, the way a user (or screen reader)
 
 ---
 
+---
+
+# Phase 2 — The request lifecycle with local mock data
+
+## Request states and transitions (section 4, continued)
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending: elder sends request
+    pending --> approved: family confirms (before deadline)
+    pending --> rejected: family rejects (before deadline)
+    pending --> expired: deadline passes with no answer
+    approved --> [*]
+    rejected --> [*]
+    expired --> [*]
+```
+
+Rules (in `src/mock/mockStore.ts`, later in the database):
+- A request **always starts** as `pending`. The elder can't choose its status.
+- Only the **linked family member** may answer, and only **once**, and only **before the deadline**.
+- Answers are final: nothing moves back to `pending`.
+- `expired` is **derived**, never saved. The saved status stays `pending`, and `getEffectiveStatus()` says "expired" once `now >= expiresAt`. A derived value can't go out of date: no timer has to remember to flip it.
+
+**Analogy:** a milk carton doesn't change its label at midnight. You compare the printed date with today's date when you look at it. `expiresAt` is the printed date; `getEffectiveStatus` does the comparing.
+
+## New React concepts (section 3, continued)
+
+### Controlled inputs
+In a **controlled** input, React state is the single source of truth. The input only shows what state says, and every keystroke updates state.
+
+```tsx
+// src/components/RequestForm.tsx
+const [values, setValues] = useState<RequestFormValues>({ amount: '', recipient: '', note: '' })
+
+<input
+  id="amount"
+  value={values.amount}                                           // state → screen
+  onChange={(event) => updateField('amount', event.target.value)} // screen → state
+/>
+```
+
+**Analogy:** a scoreboard operator. The board (input) shows only what the operator (state) writes. If you forget `onChange`, the input is "frozen", because typing never reaches the operator.
+
+### Events
+- `onChange` fires on every keystroke and gives you `event.target.value` (always a **string**, even in a number field).
+- `onSubmit` on the `<form>` fires on button click **or** Enter. Call `event.preventDefault()` or the browser reloads the page and your state is lost.
+- `onClick` on buttons. Always use `<button type="button">` unless it should submit a form.
+
+### Form validation
+`validateRequestForm(values)` in `src/lib/validation.ts` is a **pure function**: text in, verdict out. It touches no React and no screen, so it's easy to test.
+
+```ts
+validateRequestForm({ amount: '25,000', recipient: 'shop@demo-upi', note: '' })
+// → { ok: true, data: { amountInr: 25000, recipient: 'shop@demo-upi', note: null } }
+
+validateRequestForm({ amount: '-50', recipient: '', note: '' })
+// → { ok: false, errors: { amount: 'Use whole rupees…', recipient: 'Enter who you are…' } }
+```
+
+- It returns a **result object** (`ok: true` with clean data, or `ok: false` with messages) instead of throwing errors. TypeScript then forces callers to handle both cases.
+- **Browser validation is for kindness, not security.** Anyone can skip it (for example with the browser's dev tools). Phase 3 repeats these limits in the database, where they can't be skipped.
+- Accessibility: errors are text (never only a red border); `aria-invalid` and `aria-describedby` connect each error to its input; focus jumps to the first problem.
+
+### State updates must create new values (immutability)
+React only notices a change when you give it a **new** object or array.
+
+```ts
+// ✅ new object: copy the old fields, overwrite one
+setValues((previous) => ({ ...previous, [field]: value }))
+
+// ✅ new array with one item replaced
+requests.map((r) => (r.id === requestId ? updated : r))
+
+// ❌ mutating: same array object, so React may not re-render
+requests[0].status = 'approved'
+```
+
+`setValues((previous) => …)` is the **functional update** form. It always uses the latest state, which is safer when an update depends on the previous value.
+
+### Lifting state up
+The elder screen and the family screen must see the **same** list. So the list lives in their common parent, `App.tsx`, and goes down to each page as a prop:
+
+```
+App  ── requests (state) ──┬──> ElderHome / RequestDetail (elder view)
+                           └──> FamilyInbox / RequestDetail (family view)
+        ▲
+        └── handleCreate / handleRespond (callbacks): the only places that change it
+```
+
+### Conditional rendering, three ways
+```tsx
+{errors.amount && <p className="field-error">{errors.amount}</p>}       // && : show or nothing
+{waiting.length === 0 ? <p>Nothing is waiting…</p> : <ul>…</ul>}        // ? : : one or the other
+switch (status) { case 'pending': return …; case 'approved': return … } // many options (StatusBanner)
+```
+
+Using `switch` on a union type has a bonus: if someone adds a fifth status, TypeScript complains about every `switch` that forgot it.
+
+### Effects and cleanup (preview of Phases 6–7)
+`useNow()` (in `src/hooks/useNow.ts`) starts a 1-second timer with `useEffect` and **returns a cleanup function** that stops it:
+
+```ts
+useEffect(() => {
+  const timerId = setInterval(() => setNow(Date.now()), 1000)
+  return () => clearInterval(timerId) // runs when the component disappears
+}, [])
+```
+
+Forgetting the cleanup leaves timers running forever. That's a classic bug, and it matters again for Realtime subscriptions in Phase 6.
+
+## Why local state can't synchronise two devices
+
+React state lives **in the memory of one browser tab**. Your phone and your relative's phone each run their own copy of the app with their own memory. When Asha's phone runs `setRequests(...)`, nothing travels over the internet; Ravi's phone has no idea it happened. Even two tabs on the same laptop don't share state, and reloading wipes it.
+
+**Analogy:** two people each writing on their own notepad. To share, you need a **shared noticeboard** that both can read and write: a database on a server. That's Supabase, from Phase 3. Then live updates (Phase 6) are like the noticeboard ringing a bell when something changes.
+
+That's why the header says "kept only in this browser tab", and why the demo uses the Elder/Family switch in one tab.
+
+## Data-flow walkthrough: one request, start to finish
+
+1. **Elder types.** Each keystroke runs `updateField` and `setValues`, then React re-renders the form. Values are strings: `amount = "2500"`.
+2. **Elder taps "Send to family to confirm".**
+   - The `<form onSubmit>` runs `handleSubmit`, which calls `preventDefault()`.
+   - `validateRequestForm(values)` returns `{ ok: true, data: { amountInr: 2500, … } }`.
+   - `onSubmit(data)` passes it up to the `CreateRequest` page, then up to `App.handleCreate`.
+3. **`App.handleCreate`** calls `createRequest(requests, input, link, Date.now())`.
+   - That returns a **new** array with a `pending` request whose `expiresAt` is now + 60 s.
+   - `setRequests(newArray)` saves it, and `openRequest(created.id)` shows its detail page.
+4. **Re-render.** `RequestDetail` calls `getEffectiveStatus(request, nowMs)`, which returns `pending`, so `StatusBanner` shows "Waiting for Ravi… Do not pay yet."
+5. **Switch to Family.**
+   - `role` becomes `family`, and the same request stays open.
+   - `RequestDetail` now shows `FamilyResponse` with Confirm and Reject buttons, because the status is `pending`.
+6. **Ravi taps "Reject request".**
+   - `answer('rejected')` calls `onRespond`, which reaches `App.handleRespond`, which calls `respondToRequest(...)`.
+   - The checks pass (it exists, it's Ravi's, it's pending, it isn't expired), so it returns a new array with `status: 'rejected'` and `respondedAt` set.
+   - `setRequests(...)` saves it, the buttons disappear, and the outcome message appears.
+7. **Switch to Elder.** The status is `rejected`, so `StatusBanner` renders `WarningPanel` with the "Pause…" warning (`role="alert"`).
+8. **Alternative: nobody answers.** Every second `useNow` ticks and the app re-renders. Once `nowMs >= expiresAt`, the status becomes `expired`, and the elder sees the warning saying no reply is not proof of a scam.
+
+## Phase 2 file-by-file
+
+| File | What / why | Inputs → outputs | Important parts | Common mistakes | Practice task |
+|---|---|---|---|---|---|
+| `src/config.ts` | One place for the demo timeout | — | `REQUEST_TIMEOUT_SECONDS` | Hard-coding `60` in several files | Change it to 20 and watch a request expire |
+| `src/lib/validation.ts` | Turns raw form text into clean data or friendly errors | `RequestFormValues` → `ValidationResult` | regex `/^\d+$/`, limit constants | `Number('')` gives `0`; `parseInt('12abc')` gives `12` | Reject recipients containing spaces |
+| `src/lib/requestStatus.ts` | Works out the status to show | request + now → `RequestStatus` | `getEffectiveStatus`, `canBeAnswered` | Saving "expired" in state and forgetting to update it | Add `secondsLeft(request, now)` |
+| `src/mock/mockStore.ts` | Local stand-in for database rules | list + action → new list or error | `createRequest`, `respondToRequest` | Mutating the old array; forgetting the "already answered" check | Write `cancelRequest` (exercise 1) |
+| `src/hooks/useNow.ts` | A clock that re-renders every second | interval → current ms | `useEffect` + cleanup | No `clearInterval` | Make it tick every 5 s and observe |
+| `src/components/RequestForm.tsx` | Controlled form, shows errors | callbacks → `NewRequestInput` | `updateField`, `handleSubmit` | Missing `preventDefault`; `value` without `onChange` | Add a character counter for the recipient |
+| `src/components/StatusBanner.tsx` | Elder's message for each status | status, name → banner | `switch` on status | Saying "safe" or "scam" | Change the pending wording |
+| `src/components/WarningPanel.tsx` | The big "Pause." warning | reason, name → alert | `role="alert"`, one-paragraph sentence | Relying on colour or sound only | — |
+| `src/components/FamilyResponse.tsx` | Confirm/Reject, error, outcome | status, callback → buttons/message | local `error` state | Showing buttons for non-pending requests | — |
+| `src/App.tsx` | Owns the shared `requests` state | — | `handleCreate`, `handleRespond`, `switchRole` | Changing `requests` anywhere else | — |
+| `*.test.ts(x)` | Prove validation, transitions, wording and the full flow | — | fake timers in `App.test.tsx` | Testing implementation details instead of behaviour | Add a test for a 201-character note |
+
+## Phase 2 exercises (no AI; answers aren't included)
+
+1. **Add a "Cancel request" action (mock data only).** The elder should be able to cancel their own request while it's still pending.
+   - Add a status for it (think about `StoredStatus`, `RequestStatus`, `StatusBadge` labels, and every `switch` TypeScript then complains about).
+   - Write `cancelRequest(requests, requestId, elderId, nowMs)` in `mockStore.ts` with the same style of checks as `respondToRequest`. Who may cancel? What if it's already answered or expired?
+   - Add a "Cancel this request" button for the elder, shown only while pending, and the message the family member sees afterwards.
+   - Write at least two tests: cancelling works; cancelling an approved request is refused.
+2. **Trace by hand.** On paper, follow what happens when Ravi taps **Confirm** and then the request is somehow answered again. Which line in `respondToRequest` stops the second answer from changing anything?
+3. **Validation edge cases.** Predict the result of `validateRequestForm` for amounts `"007"`, `"1,00,000"`, `" 5 "` and `"१०००"` (Devanagari digits). Then write tests to check your predictions.
+4. **Two tabs.** Open the app in two tabs. Create a request in one. Explain in two sentences why the other tab doesn't show it.
+
+## Phase 2 self-test
+
+1. What makes an input "controlled"?
+2. Why does `handleSubmit` call `event.preventDefault()`?
+3. Why is `expired` calculated instead of saved?
+4. Why must `respondToRequest` return a **new** array?
+5. Where does the `requests` state live, and why there?
+6. What would happen if `useNow` didn't return a cleanup function?
+7. Why isn't browser-side validation enough for security?
+8. What exactly does "Confirmed by family" promise, and what does it **not** promise?
+
+
+---
+
+---
+
+# Phase 3 — The database: schema, Row Level Security and safe functions
+
+The app doesn't use the database yet (that's Phases 4–6). This phase builds and checks the foundation.
+
+## 5. SQL schema, relations, constraints and migrations
+
+### Tables, rows, columns
+A **table** is like a spreadsheet tab with strict rules. Each **column** has a name and a type; each **row** is one record.
+
+`money_requests` (one row = one request):
+
+| id | elder_id | family_id | amount_inr | recipient | status | created_at | expires_at | responded_at |
+|---|---|---|---|---|---|---|---|---|
+| 7c1e… | a1… | b2… | 2500 | test.shop@demo-upi | pending | 10:00:00 | 10:01:00 | *null* |
+
+Compare it with the TypeScript `MoneyRequest` in `src/types/domain.ts`. It's the same shape, with `snake_case` names instead of `camelCase`. Phase 5 converts between them.
+
+### Our schema
+
+```mermaid
+erDiagram
+    AUTH_USERS ||--o| PROFILES : "has one"
+    PROFILES ||--o| FAMILY_LINKS : "elder in (at most 1)"
+    PROFILES ||--o{ FAMILY_LINKS : "family member in (many)"
+    PROFILES ||--o{ PAIRING_CODES : "elder creates"
+    PROFILES ||--o{ MONEY_REQUESTS : "elder sends"
+    PROFILES ||--o{ MONEY_REQUESTS : "family receives"
+
+    AUTH_USERS {
+        uuid id PK
+        text email "managed by Supabase Auth"
+    }
+    PROFILES {
+        uuid id PK "= auth.users.id"
+        text role "elder | family, set once"
+        text display_name "1-40 chars"
+        timestamptz created_at
+    }
+    FAMILY_LINKS {
+        uuid id PK
+        uuid elder_id FK "UNIQUE"
+        uuid family_id FK
+        timestamptz created_at
+    }
+    PAIRING_CODES {
+        text code PK "8 chars, no I/O/0/1"
+        uuid elder_id FK
+        timestamptz expires_at "created + 10 min"
+        timestamptz used_at "null until used"
+        uuid used_by FK
+    }
+    MONEY_REQUESTS {
+        uuid id PK
+        uuid elder_id FK
+        uuid family_id FK "copied by server"
+        int amount_inr "1..100000"
+        text recipient "3-100 chars"
+        text note "optional, max 200"
+        text status "pending|approved|rejected"
+        timestamptz created_at "database clock"
+        timestamptz expires_at
+        timestamptz responded_at
+    }
+```
+
+### Keys
+- **Primary key (PK):** the column that uniquely identifies a row, like a roll number. `money_requests.id` is a random UUID made by the database (`default gen_random_uuid()`).
+- **Foreign key (FK):** a column that must match a row in another table. `money_requests.elder_id references profiles(id)` means you can't create a request for an elder who doesn't exist.
+- **`on delete cascade`:** if the parent row is deleted, delete the children too. Deleting a user removes their profile, links, codes and requests, so nothing is left orphaned.
+
+**Analogy:** the PK is a student's roll number. An FK is "roll number written on an exam paper"; the school checks that the student really exists.
+
+### Constraints: rules the database enforces, whoever is asking
+| Constraint | Where | What it stops |
+|---|---|---|
+| `not null` | most columns | Missing data |
+| `check (amount_inr between 1 and 100000)` | money_requests | Zero, negative or huge amounts, even if someone skips the form |
+| `check (status in ('pending','approved','rejected'))` | money_requests | Made-up statuses |
+| `check ((status = 'pending') = (responded_at is null))` | money_requests | "Approved" with no answer time, or "pending" with one |
+| `unique (elder_id)` | family_links | A second trusted relative for the same elder |
+| `check (elder_id <> family_id)` | links, requests | Linking to yourself |
+| `check (code ~ '^[A-HJ-NP-Z2-9]{8}$')` | pairing_codes | Badly formed codes |
+
+These repeat `src/lib/validation.ts` on purpose. **Browser checks are for kindness; database checks are for safety.**
+
+### Migrations
+A **migration** is a numbered SQL file that changes the database's structure. You run them in order (`0001` → `0002` → `0003`), and they live in Git like any other code, so every teammate (and the judges) can rebuild the same database and review every change.
+- Ours are **re-runnable**: `create table if not exists`, `drop policy if exists` then `create policy`, `create or replace function`. Running a file twice is harmless.
+- **Rule:** once a migration has been applied to a shared database, don't edit it. Add `0004_…` instead (Phase 6 will add `0004_realtime.sql`).
+
+## 6–7. Authentication vs authorization, and Row Level Security
+
+- **Authentication** answers "who are you?". Supabase Auth checks the email and password and gives the browser a signed **token** containing the user's id. In SQL, `auth.uid()` reads that id.
+- **Authorization** answers "what may you do?". That's our job: RLS policies and the checks inside the functions.
+- **Analogy:** authentication is the ID check at the building entrance. Authorization is which rooms your key card opens.
+
+### Two locks on every table
+1. **Grants** (table-level): `revoke all … from anon, authenticated` then `grant select … to authenticated`. Logged-out visitors can't touch the tables at all; signed-in users can only *read*.
+2. **RLS policies** (row-level): *which* rows they can read. With RLS enabled and no matching policy, you see **zero rows**, so the default is "deny".
+
+### Our five policies, translated into plain English
+| Policy | SQL condition | Plain English |
+|---|---|---|
+| profiles: read own | `id = auth.uid()` | You can see your own profile. |
+| profiles: read linked person | exists a `family_links` row joining you and them | You can see the name of the one person you're linked with, and no one else. |
+| family_links: read if member | `elder_id = auth.uid() or family_id = auth.uid()` | You can see a link only if you're one of its two people. |
+| pairing_codes: read own | `elder_id = auth.uid()` | Only the elder who created a code can see it. |
+| money_requests: read if elder or assigned family | `elder_id = auth.uid() or family_id = auth.uid()` | A request is visible to its elder and its assigned family member, nobody else. |
+
+`(select auth.uid())` is written with `select` so Postgres works out the user id once per query instead of once per row (faster, same result).
+
+### Why writes go through functions, not UPDATE policies
+If we gave family members an UPDATE policy "you can update requests sent to you", they could change **any column** of those rows: the amount, the recipient, or the status back to `pending`. RLS decides *which rows*, not *which columns or values*. So instead:
+
+- There are **no** INSERT, UPDATE or DELETE rights for users at all.
+- Five small functions each do **one** job and check everything themselves.
+- They are `security definer`: they run with the table owner's rights, like a bank teller who can open the vault but follows strict rules for each customer.
+- `set search_path = ''` and fully qualified names (`public.money_requests`) stop anyone tricking the function into using a look-alike table.
+- EXECUTE is granted to `authenticated` only; logged-out visitors can't call them.
+
+### The approve/reject function, line by line
+```sql
+update public.money_requests
+set status = p_decision, responded_at = now()   -- only these two columns can change
+where id = p_request_id
+  and family_id = v_uid          -- only the assigned family member (not the elder, not a stranger)
+  and status = 'pending'         -- only once; can never go back to pending
+  and expires_at > now()         -- not after the deadline (database clock, not the phone's)
+returning * into v_row;
+```
+
+If two answers arrive at the same moment, Postgres locks the row. The second `UPDATE` waits, then re-checks `status = 'pending'`, finds it false, and changes nothing. If no row matched, the function explains why, but says "Request not found" to strangers so it doesn't reveal that the request exists.
+
+## Example queries
+
+Run these in the Supabase SQL Editor. As the owner you see everything, because RLS doesn't apply to the table owner.
+
+```sql
+-- All requests, newest first, with names
+select r.amount_inr, r.recipient, r.status, e.display_name as elder, f.display_name as family
+from public.money_requests r
+join public.profiles e on e.id = r.elder_id
+join public.profiles f on f.id = r.family_id
+order by r.created_at desc;
+
+-- Which requests are effectively "expired" right now?
+select id, amount_inr from public.money_requests
+where status = 'pending' and expires_at <= now();
+
+-- Pretend to be a signed-in user (this is how rls_checks.sql works). Inside a transaction:
+begin;
+select set_config('role', 'authenticated', true);
+select set_config('request.jwt.claims', '{"sub":"<a user id>","role":"authenticated"}', true);
+select count(*) from public.money_requests;   -- now filtered by RLS
+rollback;
+```
+
+How the app will call the functions later (Phase 4–6 preview; not in the code yet):
+```ts
+await supabase.rpc('create_money_request', {
+  p_amount_inr: 2500,
+  p_recipient: 'shop@demo-upi',
+  p_note: null,
+  p_timeout_seconds: 60,
+})
+await supabase.rpc('respond_to_request', { p_request_id: id, p_decision: 'approved' })
+```
+
+## How the security was tested
+`supabase/checks/rls_checks.sql` creates four throwaway users (Elder A, Family B linked to A, Stranger C, Elder D). It plays each one and tries 36 allowed or forbidden actions. Each result is recorded as PASS or FAIL.
+
+To check that the checks themselves work, we ran them against a **deliberately broken** copy (RLS turned off, UPDATE allowed). They correctly reported FAIL. A test that never fails proves nothing.
+
+Honesty note: so far this ran on PGlite (real PostgreSQL in WebAssembly) with a stand-in for Supabase's auth pieces, **not** on a real Supabase project. Running it on yours is README step 4.
+
+## Phase 3 file-by-file
+
+| File | What / why | Important parts | Common mistakes | Practice task |
+|---|---|---|---|---|
+| `0001_tables.sql` | Structure + rules for data | FKs with `on delete cascade`, `check` constraints, indexes | Forgetting `not null`; using `float` for money | Add a `check` that `recipient` has no leading/trailing spaces |
+| `0002_rls.sql` | Who can read which rows | `enable row level security`, `revoke`/`grant`, 5 policies | Enabling RLS but leaving broad grants; adding an UPDATE policy "to make it work" | Write the policy for "elders can read their own pairing codes" from memory |
+| `0003_functions.sql` | The only write paths | `auth.uid()` checks, conditional `UPDATE`, `security definer`, `search_path = ''`, grants | Forgetting to revoke EXECUTE from `anon`; trusting a user id passed as a parameter | Explain why `create_money_request` has no `p_family_id` parameter |
+| `rls_checks.sql` | Proves the rules | `act_as()`, `begin … exception … end` blocks | Only testing the "happy path" | Add a check: stranger C cannot redeem elder D's fresh code after it's used |
+
+## Phase 3 exercises (no AI; answers aren't included)
+
+1. **Policies in plain English.** Cover the table above. For each of the five policies in `0002_rls.sql`, write one plain-English sentence about who can see what. Then check yourself against the table.
+2. **Predict, then check.** For each scenario, say "rows visible", "error" or "allowed", and which line of SQL decides it:
+   - Stranger C runs `select * from money_requests`.
+   - Family B runs `update money_requests set amount_inr = 1`.
+   - Elder A calls `respond_to_request(<A's own request>, 'approved')`.
+   - Family B calls `respond_to_request` 2 minutes after the deadline.
+   - A logged-out visitor calls `create_pairing_code()`.
+3. **Break it on purpose (local or a throwaway project only).** Comment out the `and status = 'pending'` line in `respond_to_request`, re-run `0003`, then run `rls_checks.sql`. Which check fails, and why? Restore the line afterwards.
+4. **Design question.** Write half a page: what would go wrong if `money_requests` had the policy `for update using (family_id = auth.uid())` instead of our function? Give two concrete attacks.
+
+## Phase 3 self-test
+1. What's the difference between a primary key and a foreign key? Give one example of each from our schema.
+2. Why is `amount_inr` an `integer` with a `check`, and why repeat the browser's validation here?
+3. Authentication vs authorization: which one does `auth.uid()` give you, and which one do policies provide?
+4. With RLS enabled and no policies, what does a signed-in user see?
+5. Why do users have SELECT but no INSERT, UPDATE or DELETE?
+6. What does `security definer` mean, and what two precautions do we take because of it?
+7. How does `respond_to_request` stop a duplicate answer, even if two arrive at the same instant?
+8. Why does the server, not the browser, choose `family_id` and `expires_at`?
+
+
+---
+
 ## 12. Glossary  *(grows every phase)*
 
 - **Component:** a function that returns UI.
@@ -312,3 +704,22 @@ We find elements **by role and visible text**, the way a user (or screen reader)
 - **Bundle / build:** turning source files into optimised files for the browser.
 - **jsdom:** a fake browser that runs inside Node for tests.
 - **Mock data:** made-up data standing in for a real database.
+- **Controlled input:** an input whose value comes from React state.
+- **Validation:** checking input before accepting it; in the browser for kindness, on the server for security.
+- **Pure function:** output depends only on inputs and changes nothing else. Easy to test.
+- **Immutability:** making a new object/array instead of changing the old one.
+- **Lifting state up:** moving state to the nearest common parent so siblings can share it.
+- **Derived state:** a value calculated from other data (like `expired`) instead of stored.
+- **Effect / cleanup:** code that runs after rendering (timers, subscriptions) and the function that undoes it.
+- **Table / row / column:** a typed grid; one record; one named field.
+- **Primary key:** the column that uniquely identifies a row.
+- **Foreign key:** a column that must match a row in another table.
+- **Constraint:** a rule the database enforces on every write (`not null`, `check`, `unique`).
+- **Migration:** a numbered SQL file that changes the database structure, kept in Git.
+- **Authentication:** proving who you are (sign-in). **Authorization:** deciding what you may do.
+- **Row Level Security (RLS):** per-row read/write rules evaluated inside the database.
+- **Policy:** one RLS rule, e.g. "rows where elder_id is me".
+- **Grant / revoke:** table-level permission for a role (`anon`, `authenticated`).
+- **RPC / database function:** SQL code the app calls by name (`supabase.rpc(...)`).
+- **Security definer:** a function that runs with its owner's rights; must check the caller itself.
+- **`auth.uid()`:** the signed-in user's id, read from their login token.

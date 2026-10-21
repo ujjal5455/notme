@@ -30,7 +30,7 @@ export function Layout({ role, currentView, onSwitchRole, onNavigate, children }
         Skip to main content
       </a>
       <header className="app-header">
-        <p className="brand">Notme</p>
+        <p className="brand">Flod</p>
         {/* Demo-only switch. Phase 4 replaces it with real sign-in. */}
         <div className="role-switch" role="group" aria-label="Demo: view the app as">
           <button
@@ -51,7 +51,8 @@ export function Layout({ role, currentView, onSwitchRole, onNavigate, children }
       </header>
 
       <p className="demo-banner">
-        Demo prototype with made-up data. No real money is sent.
+        <strong>Local demo:</strong> made-up data, kept only in this browser tab. It is not shared
+        with other devices and disappears when you reload. No real money is sent.
       </p>
 
       <nav className="app-nav" aria-label="Main">

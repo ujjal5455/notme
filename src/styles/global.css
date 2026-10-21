@@ -1,4 +1,4 @@
-/* Notme global styles — mobile-first: base rules target a ~375 px phone,
+/* Flod global styles — mobile-first: base rules target a ~375 px phone,
    the @media rule at the bottom adds space on wider screens. */
 
 :root {
@@ -311,9 +311,87 @@ textarea {
 }
 
 .warning-title {
+  display: block;
   font-size: 1.4rem;
   font-weight: 800;
   margin-bottom: 0.5rem;
+}
+
+/* ---------- Form hints and errors (Phase 2) ---------- */
+.field-hint {
+  font-size: 0.9rem;
+  color: var(--color-muted);
+  margin: 0 0 0.35rem;
+}
+
+.field-error {
+  color: var(--color-rejected-text);
+  font-weight: 700;
+  margin: 0.35rem 0 0;
+}
+
+/* The error is also in words, so colour is never the only signal. */
+.field-error::before {
+  content: '⚠ ';
+}
+
+input[aria-invalid='true'],
+textarea[aria-invalid='true'] {
+  border-color: var(--color-rejected-text);
+  border-width: 3px;
+}
+
+.button-danger {
+  display: block;
+  width: 100%;
+  margin: 0.75rem 0;
+  font-weight: 700;
+  border-color: var(--color-rejected-text);
+  color: var(--color-rejected-text);
+}
+
+/* ---------- Status banners (Phase 2) ---------- */
+.detail-recipient {
+  font-size: 1.15rem;
+  overflow-wrap: anywhere;
+  margin-bottom: 0.5rem;
+}
+
+.banner {
+  margin: 1rem 0;
+  padding: 1rem;
+  border-radius: var(--radius);
+  border: 3px solid currentColor;
+}
+
+.banner p:last-child {
+  margin-bottom: 0;
+}
+
+.banner-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+}
+
+.banner-pending {
+  background: var(--color-pending-bg);
+  color: var(--color-pending-text);
+}
+
+.banner-approved {
+  background: var(--color-approved-bg);
+  color: var(--color-approved-text);
+}
+
+.banner-demo-hint {
+  font-size: 0.9rem;
+  border-top: 1px dashed currentColor;
+  padding-top: 0.5rem;
+}
+
+.family-response {
+  margin: 1rem 0;
 }
 
 /* ---------- Wider screens ---------- */

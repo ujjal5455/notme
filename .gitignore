@@ -33,3 +33,7 @@ supabase/.branches
 *.njsproj
 *.sln
 *.sw?
+
+# Kept local on purpose (not shared in the repository)
+presentation/
+PROMPTS.md

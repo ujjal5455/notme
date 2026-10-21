@@ -1,4 +1,5 @@
-// SYNTHETIC demo data for Phase 1. No real people, numbers or UPI IDs.
+// SYNTHETIC demo data. No real people, numbers or UPI IDs.
+// These are the starting requests; new ones are added in App.tsx state (Phase 2).
 // Phase 5 replaces this with rows loaded from Supabase.
 import type { MoneyRequest, Profile } from '../types/domain'
 
@@ -69,7 +70,8 @@ export const mockRequests: MoneyRequest[] = [
     amountInr: 5000,
     recipient: 'travel.refund@demo-upi',
     note: null,
-    status: 'expired',
+    // Saved as pending, but its deadline has passed, so the app SHOWS it as expired.
+    status: 'pending',
     createdAt: minutes(-1440),
     expiresAt: minutes(-1430),
     respondedAt: null,
