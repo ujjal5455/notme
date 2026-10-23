@@ -12,7 +12,7 @@
 - [x] **Phase 3** — Supabase schema, RLS, database functions
 - [x] **Phase 4** — Authentication and trusted-family pairing *(code + automated tests 2026-10-23; manual two-browser test on real Supabase passed, reported by the user 2026-10-23)*
 - [x] **Phase 5** — Create requests and deliver to the linked family member *(code + automated tests 2026-10-23; manual two-browser test passed, reported by the user 2026-10-23)*
-- [ ] **Phase 6** — Approve/reject and real-time status updates
+- [x] **Phase 6** — Approve/reject and real-time status updates *(code + automated tests 2026-10-23; 0004 applied and manual two-browser test passed, reported by the user 2026-10-23)*
 - [ ] **Phase 7** — Timeout, warnings, accessibility, failure handling
 - [ ] **Phase 8** — Tests, complete learning guide, demo script
 - [ ] **Phase 9** — Deployment and hackathon readiness
@@ -59,7 +59,7 @@
 | 3 | C `supabase/migrations/0001_tables.sql`, `0002_rls.sql`, `0003_functions.sql`, `supabase/checks/rls_checks.sql` (not `supabase/tests/`, which the Supabase CLI reserves for pgTAP). M `.env.example`, `README.md`, docs |
 | 4 | C `src/lib/supabaseClient.ts`, `src/auth/AuthProvider.tsx`, `src/pages/{SignIn,SignUp,ChooseRole,PairElder,PairFamily}.tsx`, `src/lib/api/{profile,pairing}.ts`; dep `@supabase/supabase-js`. M `App.tsx`, docs. **As built:** one `SignIn.tsx` with two modes (no `SignUp.tsx`); added `src/lib/api/errors.ts`, `src/auth/authContext.ts`, `src/SignedInApp.tsx`, `src/hooks/useCountdown.ts` (pulled forward from Phase 7), `src/test/fakeSupabase.ts`, `src/SignedInApp.test.tsx`; M `main.tsx`, `Layout.tsx`, `FamilyInbox.tsx`, `StatusBanner.tsx`, CSS, `README.md` |
 | 5 | C `src/lib/api/requests.ts`. M CreateRequest, ElderHome, FamilyInbox, tests, docs. **As built:** also C `src/hooks/useMyRequests.ts`; M `SignedInApp.tsx`, `RequestForm.tsx`, `FamilyResponse.tsx`, `RequestDetail.tsx`, `StatusBanner.tsx`, `Layout.tsx`, `src/test/fakeSupabase.ts`, `README.md` |
-| 6 | C `src/hooks/useRequestUpdates.ts`, `supabase/migrations/0004_realtime.sql`. M requests API, RequestDetail, ElderHome, docs |
+| 6 | C `src/hooks/useRequestUpdates.ts`, `supabase/migrations/0004_realtime.sql`. M requests API, RequestDetail, ElderHome, docs. **As built:** also C `src/components/ConnectionNotice.tsx`, `src/lib/requestList.ts` (+ test), `src/components/FamilyResponse.test.tsx`, `src/hooks/useRequestUpdates.test.tsx`; M `FamilyResponse.tsx`, `SignedInApp.tsx`, `useMyRequests.ts`, `config.ts` (`POLL_INTERVAL_MS`), `StatusBanner.tsx`, `Layout.tsx`, fake Supabase, `README.md` |
 | 7 | C `src/hooks/useCountdown.ts`, `src/lib/alertSound.ts`. M `src/config.ts`, WarningPanel, CSS, docs |
 | 8 | C `docs/DEMO_SCRIPT.md`, more tests. M `README.md`, `docs/LEARNING_GUIDE.md` |
 | 9 | C `docs/DISCLOSURE.md`. M README, PLAN, BUILD_LOG, DEMO_SCRIPT |
@@ -190,5 +190,14 @@ Sources (pages say "Last updated: 22 September 2026"):
 - [x] Manual: create in one browser, see it in the linked family member's browser on the real project (README checklist) — user, 2026-10-23
 - Confirm/Reject deliberately not connected yet (Phase 6).
 
-### Phases 6–9
+### Phase 6
+- [x] Family member sees amount, recipient, note, creation time and expiry; separate Confirm / Reject
+- [x] Answers go through `respond_to_request` only; duplicates, late answers and wrong users refused by the database (rls_checks 36/36 on the hosted project); UI shows the saved result, not a guess
+- [x] Realtime subscription with clean-up on unmount; reconnect handled; polling fallback every 4 s; failed checks shown as "Can't reach the server… don't pay", recovering by itself
+- [x] Elder's status never implies the recipient is safe
+- [x] Automated: lint, typecheck, 71/71 tests, build; `0004` re-runnable on PGlite
+- [x] User runs `0004_realtime.sql` on the hosted project — user, 2026-10-23
+- [x] Manual: an answer in one browser appears in the other without Refresh (README checklist) — user, 2026-10-23
+
+### Phases 7–9
 See "Done when" in `PROMPTS.md`; checklists are added here when each phase starts.

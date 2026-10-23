@@ -11,8 +11,7 @@ interface RequestDetailProps {
   familyMember: Profile | undefined
   viewerRole: UserRole
   nowMs: number
-  /** Not passed yet: answering through the database is added in Phase 6. */
-  onRespond?: (requestId: string, decision: FamilyDecision) => string | null
+  onRespond: (requestId: string, decision: FamilyDecision) => Promise<void>
   onBack: () => void
 }
 
@@ -58,7 +57,7 @@ export function RequestDetail({
         <FamilyResponse
           status={status}
           elderName={elderName}
-          onRespond={onRespond && ((decision) => onRespond(request.id, decision))}
+          onRespond={(decision) => onRespond(request.id, decision)}
         />
       )}
 

@@ -1,6 +1,7 @@
 // A pretend Supabase client for tests: same method names as the real one,
 // but everything lives in memory and answers instantly with { data, error }.
-// It imitates the rules and messages of 0002_rls.sql and 0003_functions.sql
+// It imitates the rules and messages of 0002_rls.sql and 0003_functions.sql,
+// and Realtime's "only send a change to people who may read the row",
 // closely enough to test the React screens. It does NOT prove the real
 // database is safe: supabase/checks/rls_checks.sql does that.
 //
@@ -21,6 +22,14 @@ interface Row {
 }
 type Result = { data: unknown; error: { message: string } | null }
 type Listener = (event: string, session: { user: { id: string; email: string } } | null) => void
+type ChannelStatus = 'SUBSCRIBED' | 'CHANNEL_ERROR' | 'TIMED_OUT' | 'CLOSED'
+interface FakeChannel {
+  /** Who was signed in when the channel was made: Realtime checks THEIR read rights. */
+  ownerId: string | null
+  onChange?: (payload: { eventType: string; new: Row }) => void
+  onStatus?: (status: ChannelStatus) => void
+  removed: boolean
+}
 
 const NETWORK_ERROR: Result = { data: null, error: { message: 'TypeError: Failed to fetch' } }
 
@@ -31,7 +40,9 @@ function createFake() {
   let listeners: Listener[] = []
   let codeQueue: string[] = []
   let nextId = 1
-  const state = { networkDown: false }
+  let channels: FakeChannel[] = []
+  // realtime: whether new channels connect ('live') or fail ('fail').
+  const state = { networkDown: false, realtime: 'live' as 'live' | 'fail' }
 
   function reset() {
     users = []
@@ -40,7 +51,19 @@ function createFake() {
     listeners = []
     codeQueue = ['P38SP4XS', 'K7QM3XPR', 'H2WZ9TNB']
     nextId = 1
+    channels = []
     state.networkDown = false
+    state.realtime = 'live'
+  }
+
+  /** Realtime delivery: tell every open channel whose owner may read this request. */
+  function broadcast(eventType: 'INSERT' | 'UPDATE', row: Row) {
+    for (const ch of channels) {
+      if (ch.removed) continue
+      if (ch.ownerId === row.elder_id || ch.ownerId === row.family_id) {
+        ch.onChange?.({ eventType, new: { ...row } })
+      }
+    }
   }
   reset()
 
@@ -207,7 +230,26 @@ function createFake() {
         responded_at: null,
       }
       tables.money_requests.push(row)
+      broadcast('INSERT', row)
       return ok({ ...row })
+    },
+    respond_to_request({ p_request_id, p_decision }) {
+      const me = uid()
+      if (!me) return fail('You need to sign in first.')
+      if (p_decision !== 'approved' && p_decision !== 'rejected') {
+        return fail('Decision must be approved or rejected.')
+      }
+      const row = tables.money_requests.find((r) => r.id === p_request_id)
+      // Same single conditional check as the SQL: mine AND pending AND not expired.
+      if (row && row.family_id === me && row.status === 'pending' && Date.parse(String(row.expires_at)) > Date.now()) {
+        row.status = p_decision
+        row.responded_at = new Date().toISOString()
+        broadcast('UPDATE', row)
+        return ok({ ...row })
+      }
+      if (!row || row.family_id !== me) return fail('Request not found.')
+      if (row.status !== 'pending') return fail('This request has already been answered.')
+      return fail('This request has expired, so it can no longer be answered.')
     },
   }
 
@@ -259,6 +301,41 @@ function createFake() {
       const fn = functions[name]
       return fn ? fn(args) : fail(`Could not find the function public.${name}`)
     },
+    channel(_name: string) {
+      const ch: FakeChannel = { ownerId: uid(), removed: false }
+      const handle = {
+        ch,
+        on(_type: string, _filter: unknown, callback: FakeChannel['onChange']) {
+          ch.onChange = callback
+          return handle
+        },
+        subscribe(callback: FakeChannel['onStatus']) {
+          ch.onStatus = callback
+          channels.push(ch)
+          // Like the real one, the status arrives a moment later, not instantly.
+          const status: ChannelStatus = state.realtime === 'live' ? 'SUBSCRIBED' : 'CHANNEL_ERROR'
+          queueMicrotask(() => {
+            if (!ch.removed) ch.onStatus?.(status)
+          })
+          return handle
+        },
+      }
+      return handle
+    },
+    async removeChannel(handle: { ch: FakeChannel }) {
+      handle.ch.removed = true
+      return 'ok'
+    },
+  }
+
+  /** Test helper: make every open channel report a status (e.g. the connection drops). */
+  function setChannelStatus(status: ChannelStatus) {
+    for (const ch of channels) if (!ch.removed) ch.onStatus?.(status)
+  }
+
+  /** Test helper: how many channels are still open. */
+  function openChannelCount() {
+    return channels.filter((ch) => !ch.removed).length
   }
 
   /** Test helper: put a row straight into a table, as if it had been saved earlier. */
@@ -286,7 +363,16 @@ function createFake() {
     await supabase.auth.signInWithPassword({ email, password: 'demo-pass-1' })
   }
 
-  return { supabase, state, reset, insertRow, createPairedAccounts, signInAs }
+  return {
+    supabase,
+    state,
+    reset,
+    insertRow,
+    createPairedAccounts,
+    signInAs,
+    setChannelStatus,
+    openChannelCount,
+  }
 }
 
 export const fake = createFake()

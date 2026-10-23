@@ -941,6 +941,117 @@ If Asha's internet drops at step 2, `supabase-js` returns an error containing "F
 
 ---
 
+# Phase 6 — Confirm / reject and live updates
+
+What changed: the family member's **Confirm request / Reject request** buttons now call the database, and both screens update **by themselves** through Supabase Realtime, with polling as the fallback.
+
+## 7. Safe approval and rejection (section 7, continued)
+
+### Why the database, not the button, decides
+Hiding the buttons on an expired request is only for kindness. Anyone can call the API directly, so `respond_to_request` (from Phase 3) does the real check in **one** conditional update:
+```sql
+update public.money_requests
+set status = p_decision, responded_at = now()
+where id = p_request_id
+  and family_id = auth.uid()   -- sent to ME
+  and status = 'pending'       -- not answered yet
+  and expires_at > now()       -- not too late
+returning *;
+```
+Zero rows changed → it raises *Request not found.*, *already been answered* or *expired*. Two answers at the same instant? Postgres locks the row; the second one re-checks `status = 'pending'`, finds it false, and changes nothing.
+
+### Confirmed UI, not optimistic UI
+- **Optimistic UI** shows "Rejected" the moment you tap, then hopes the server agrees.
+- **Confirmed UI** waits and shows what the server **saved**.
+
+Flod uses confirmed UI for answers: if the request had just expired, an optimistic screen would lie. While waiting, both buttons are disabled and the pressed one says *Sending…*, so a double tap can't send twice. If the database refuses, `SignedInApp.handleRespond` reloads the list (so the screen shows the real state) and the database's message is shown.
+
+## 9. Realtime subscriptions, polling and cleanup
+
+### Subscriptions vs polling
+*Analogy:* waiting for a parcel. **Polling** = walking to the door every 4 seconds to check. **A subscription** = the courier rings the bell. The bell is better, but if it's broken you go back to checking the door, and you tell people you're doing so.
+
+| | Realtime subscription | Polling |
+|---|---|---|
+| How | One WebSocket; Supabase pushes each change | `listMyRequests()` every `POLL_INTERVAL_MS` (4 s) |
+| Speed | Within about a second | Up to 4 s late |
+| Cost | Tiny | One request per interval |
+| Used when | Channel status `SUBSCRIBED` | Any other status (`CHANNEL_ERROR`, `TIMED_OUT`, `CLOSED`), or after a failed check |
+
+### What makes Realtime work (and stay private)
+1. **`0004_realtime.sql`** adds `money_requests` to the `supabase_realtime` **publication** (Postgres's list of tables whose changes are reported). It checks `pg_publication_tables` first, so it's safe to re-run.
+2. supabase-js opens a **channel**: `.on('postgres_changes', { event: '*', schema: 'public', table: 'money_requests' }, callback).subscribe(statusCallback)`.
+3. Before delivering a change to a screen, Realtime checks **that user's SELECT policy**. A stranger's screen never hears about Asha's request.
+
+### `useRequestUpdates`, in plain words
+```ts
+const { status, checkNow } = useRequestUpdates(profile.id, upsert, refetch)
+```
+- On `SUBSCRIBED`: stop polling, status `live`, and **catch up once** (anything that changed before the channel was ready would never be announced).
+- On any other channel status: status `polling`, start a 4-second timer.
+- If a check fails: status `offline` and **keep checking**, so the screen recovers by itself.
+- Clean-up: `active = false`, clear the timer, `removeChannel(channel)`. Nothing keeps running after the screen closes.
+- `checkNow` is what the **Try again** button calls.
+
+### Stale data and "never go backwards"
+Copies of the same request arrive from several places: a full load, a poll, a live update, our own answer. A slow poll that started *before* Ravi answered can arrive *after* the live update. `src/lib/requestList.ts` has one rule for that: **an answered request never goes back to pending** (the database guarantees it), so an older "pending" copy never overwrites a known answer.
+```ts
+export function newerOf(current, incoming) {
+  if (current && current.status !== 'pending' && incoming.status === 'pending') return current
+  return incoming
+}
+```
+
+### Two real bugs found while building this (and what they teach)
+1. **The same channel name twice.** supabase-js returns the *existing* channel if the name matches. In development React starts, stops and restarts each effect once, so the second start would reuse a half-closed channel. Fix: a counter makes each name unique (`money-requests-<user>-<n>`). *Lesson:* read what a library does with repeated calls.
+2. **"Offline" that never cleared.** In the first draft, if the catch-up check failed while the channel was live, nothing ever checked again. A test that recorded every status caught it. Fix: after a failed check, keep polling until one succeeds. *Lesson:* test recovery, not just failure.
+
+## Tracing one answer from Ravi's tap to Asha's warning
+1. Ravi taps **Reject request** → `FamilyResponse.answer('rejected')` → `sending = 'rejected'`, both buttons disabled, label *Sending…*.
+2. `SignedInApp.handleRespond(id, 'rejected')` → `respondToRequest` → `supabase.rpc('respond_to_request', { p_request_id, p_decision: 'rejected' })` with Ravi's token.
+3. Postgres: the conditional update matches 1 row → `status = 'rejected'`, `responded_at = now()`; returns the row.
+4. Ravi's screen: `upsert(updated)` → `RequestDetail` redraws → `FamilyResponse` gets `status="rejected"` → "You rejected this request. Asha (demo) is shown a warning not to pay."
+5. Meanwhile Postgres reports the change to Realtime. Realtime checks Asha's SELECT policy (she's the elder on this row: yes) → WebSocket message → Asha's `useRequestUpdates` callback → `toMoneyRequest(payload.new)` → `upsert` → her detail screen redraws → `StatusBanner` → `WarningPanel`: **"Pause. This request has not been confirmed. Contact your family member using a number you already trust."**
+
+If Asha's live connection is down, step 5 happens through polling instead, at most ~4 s later, and a notice says so.
+
+## How to run and test Phase 6
+- Run `supabase/migrations/0004_realtime.sql` once on your project (README → Database setup, step 3).
+- Automated: `npm test`, which includes `src/hooks/useRequestUpdates.test.tsx` (live, fallback, offline + recovery, connection drop, clean-up), `src/components/FamilyResponse.test.tsx` (busy + double tap, refusal message), `src/lib/requestList.test.ts` (never go backwards) and the Phase 6 tests in `src/SignedInApp.test.tsx`.
+- Manual (two browsers side by side): README → "Manual test: confirm / reject and live updates (Phase 6)".
+
+## Phase 6 file-by-file
+
+| File | What / why | Inputs → outputs | Important parts | Common mistakes | Practice task |
+|---|---|---|---|---|---|
+| `supabase/migrations/0004_realtime.sql` | Turns on change reports for `money_requests` | — | `pg_publication_tables` check; idempotent | Adding every table; plain `alter publication` failing on re-run | Write the check query from memory |
+| `src/lib/api/requests.ts` | + `respondToRequest` | id + decision → saved row or the DB's message | `rpc('respond_to_request')` | Sending `status` via `update()` instead of the RPC | Explain why there's no `updateRequest` function |
+| `src/hooks/useRequestUpdates.ts` | Live updates + polling fallback | user id + callbacks → `{ status, checkNow }` | unique channel name, `active`, `keepPolling`, catch-up, clean-up | Forgetting `removeChannel`; two timers; unstable callbacks causing reconnects | Draw the status changes for "connected → Wi-Fi off → Wi-Fi on" |
+| `src/hooks/useMyRequests.ts` | + `refetch` (rejects on failure), stable `upsert` | — | `useCallback`, `mergeLoaded` | A poll function that never rejects (offline can't be detected) | — |
+| `src/lib/requestList.ts` | Merging copies safely | lists + one copy → new list | `newerOf`, `upsertRequest`, `mergeLoaded` | Letting a stale poll undo an answer | Add a test: two different requests, both answered |
+| `src/components/FamilyResponse.tsx` | Async answer buttons | status → buttons or outcome | `sending`, both disabled, DB message | Optimistic "Rejected" before the server agrees | Move focus to the outcome text after answering |
+| `src/components/ConnectionNotice.tsx` | How fresh is this screen? | status + load error → notice | `role="alert"` + safe next step when offline | Silently showing stale data | Add a quiet "● Live" label |
+| `src/SignedInApp.tsx` | Wires it all | — | `handleRespond` reloads on refusal | Showing the refusal without correcting the screen | — |
+
+## Phase 6 exercises (no AI; answers aren't included)
+1. **Bell or door?** For each situation, say whether Asha's screen learns the answer by subscription, by polling, or not at all, and what notice she sees: (a) everything works; (b) `money_requests` removed from the publication; (c) Wi-Fi off; (d) Wi-Fi back on.
+2. **Break it on purpose.** In `useRequestUpdates.ts`, comment out `void supabase.removeChannel(channel)`. Run `npm test`. Which test fails, and what would happen in a real app after opening and closing the screen 50 times? Undo it.
+3. **Why confirmed, not optimistic?** Write two sentences describing a real case where an optimistic "Rejected" would mislead Asha.
+4. **Network tab.** With the real backend, open DevTools → Network → **WS** in Asha's window, select the websocket, then **Messages**. Have Ravi answer. Find the message with the changed row. Which fields does it contain?
+5. **Rebuild exercise.** From memory, write `newerOf` and three test cases for it.
+
+## Phase 6 self-test
+1. Why must the database, not the hidden button, stop a late answer?
+2. What three things does the conditional `UPDATE` in `respond_to_request` check, and what happens when 0 rows match?
+3. What's a publication, and why is `0004_realtime.sql` safe to run twice?
+4. How does Realtime keep a stranger from receiving Asha's changes?
+5. Why does the hook "catch up" once after `SUBSCRIBED`?
+6. What does the clean-up function stop, and why set `active = false` first?
+7. What's the difference between optimistic and confirmed UI, and which does Flod use for answers?
+8. What does `newerOf` protect against?
+
+---
+
 ## 12. Glossary  *(grows every phase)*
 
 - **Component:** a function that returns UI.
@@ -990,3 +1101,14 @@ If Asha's internet drops at step 2, `supabase-js` returns an error containing "F
 - **Loading / empty / error state:** the different things a screen must show while talking to a server.
 - **Upsert:** update an item if it exists, otherwise insert it.
 - **`visibilitychange`:** browser event fired when a tab is hidden or shown again.
+- **Realtime / subscription:** the server pushes changes to open screens over a WebSocket.
+- **WebSocket:** a connection that stays open so the server can send messages at any time.
+- **Channel:** one supabase-js subscription, with a name and a status (`SUBSCRIBED`, `CHANNEL_ERROR`, `TIMED_OUT`, `CLOSED`).
+- **Publication:** Postgres's list of tables whose changes are reported (`supabase_realtime`).
+- **Polling:** asking the server again every few seconds.
+- **Fallback:** the slower plan used when the preferred one fails.
+- **Stale data:** information that may no longer be true.
+- **Optimistic UI:** showing a result before the server confirms it. **Confirmed UI:** showing only what the server saved.
+- **Conditional update:** an `UPDATE … WHERE` that only changes rows still meeting every rule.
+- **Idempotent:** safe to run more than once with the same result.
+- **`useCallback`:** keeps the same function between redraws, so effects that depend on it don't restart.

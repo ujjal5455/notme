@@ -1,4 +1,4 @@
-import type { MoneyRequest, NewRequestInput, StoredStatus } from '../../types/domain'
+import type { FamilyDecision, MoneyRequest, NewRequestInput, StoredStatus } from '../../types/domain'
 import { supabase } from '../supabaseClient'
 import { friendlyMessage } from './errors'
 
@@ -62,4 +62,21 @@ export async function listMyRequests(): Promise<MoneyRequest[]> {
     .order('created_at', { ascending: false })
   if (error) throw new Error(friendlyMessage(error.message))
   return data.map(toMoneyRequest)
+}
+
+/**
+ * Family member: approve or reject one request. The database changes it only if
+ * it is still pending, not expired, and sent to the caller; otherwise it raises
+ * "already answered", "expired" or "Request not found."
+ */
+export async function respondToRequest(
+  requestId: string,
+  decision: FamilyDecision,
+): Promise<MoneyRequest> {
+  const { data, error } = await supabase.rpc('respond_to_request', {
+    p_request_id: requestId,
+    p_decision: decision,
+  })
+  if (error) throw new Error(friendlyMessage(error.message))
+  return toMoneyRequest(data)
 }

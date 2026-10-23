@@ -4,31 +4,28 @@ import type { FamilyDecision, RequestStatus } from '../types/domain'
 interface FamilyResponseProps {
   status: RequestStatus
   elderName: string
-  /**
-   * Returns an error message if the answer was refused, or null if it was saved.
-   * Not passed yet: answering through the database is added in Phase 6.
-   */
-  onRespond?: (decision: FamilyDecision) => string | null
+  /** Saves the answer. Throws the database's message if it was refused. */
+  onRespond: (decision: FamilyDecision) => Promise<void>
 }
 
 /** What the FAMILY MEMBER sees: Confirm/Reject while pending, otherwise the outcome. */
 export function FamilyResponse({ status, elderName, onRespond }: FamilyResponseProps) {
+  const [sending, setSending] = useState<FamilyDecision | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  function answer(decision: FamilyDecision) {
-    if (onRespond) setError(onRespond(decision))
-  }
-
-  if (status === 'pending' && !onRespond) {
-    return (
-      <div className="family-response">
-        <h2>Is this request genuine?</h2>
-        <p className="notice" role="status">
-          Demo: the Confirm and Reject buttons are connected in the next phase. For now, if you
-          don&apos;t know about this payment, call {elderName} on a number you already know.
-        </p>
-      </div>
-    )
+  async function answer(decision: FamilyDecision) {
+    if (sending) return // a double tap must not send twice
+    setSending(decision)
+    setError(null)
+    try {
+      await onRespond(decision)
+      // Nothing else to do: the saved request comes back with its new status,
+      // so this component redraws with the outcome below.
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.')
+    } finally {
+      setSending(null)
+    }
   }
 
   if (status === 'pending') {
@@ -39,11 +36,21 @@ export function FamilyResponse({ status, elderName, onRespond }: FamilyResponseP
           Only confirm if you know about this payment and the amount and recipient are exactly
           right.
         </p>
-        <button type="button" className="button-primary" onClick={() => answer('approved')}>
-          Confirm request
+        <button
+          type="button"
+          className="button-primary"
+          disabled={sending !== null}
+          onClick={() => answer('approved')}
+        >
+          {sending === 'approved' ? 'Sending…' : 'Confirm request'}
         </button>
-        <button type="button" className="button-danger" onClick={() => answer('rejected')}>
-          Reject request
+        <button
+          type="button"
+          className="button-danger"
+          disabled={sending !== null}
+          onClick={() => answer('rejected')}
+        >
+          {sending === 'rejected' ? 'Sending…' : 'Reject request'}
         </button>
         {error && (
           <p className="field-error" role="alert">

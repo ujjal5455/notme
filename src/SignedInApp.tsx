@@ -1,15 +1,17 @@
 import { useState } from 'react'
+import { ConnectionNotice } from './components/ConnectionNotice'
 import { Layout } from './components/Layout'
 import { REQUEST_TIMEOUT_SECONDS } from './config'
 import { useMyRequests } from './hooks/useMyRequests'
 import { useNow } from './hooks/useNow'
-import { createMoneyRequest } from './lib/api/requests'
+import { useRequestUpdates } from './hooks/useRequestUpdates'
+import { createMoneyRequest, respondToRequest } from './lib/api/requests'
 import { AboutSafety } from './pages/AboutSafety'
 import { CreateRequest } from './pages/CreateRequest'
 import { ElderHome } from './pages/ElderHome'
 import { FamilyInbox } from './pages/FamilyInbox'
 import { RequestDetail } from './pages/RequestDetail'
-import type { NewRequestInput, Profile, UserRole } from './types/domain'
+import type { FamilyDecision, NewRequestInput, Profile, UserRole } from './types/domain'
 import type { View } from './types/view'
 
 interface SignedInAppProps {
@@ -24,7 +26,7 @@ function homeFor(role: UserRole): View {
   return role === 'elder' ? { name: 'elderHome' } : { name: 'familyInbox' }
 }
 
-/** The switchboard for a signed-in, linked person. Requests come from Supabase (Phase 5). */
+/** The switchboard for a signed-in, linked person. Requests come from Supabase and stay live. */
 export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppProps) {
   const role = profile.role
   const elder = role === 'elder' ? profile : linkedPerson
@@ -32,7 +34,9 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
 
   const [view, setView] = useState<View>(() => homeFor(role))
   // Row Level Security sends only this person's requests, so no filtering is needed here.
-  const { requests, loading, error, reload, upsert } = useMyRequests(profile.id)
+  const { requests, loading, error, reload, refetch, upsert } = useMyRequests(profile.id)
+  // Live updates from Supabase Realtime, or polling every few seconds if that fails.
+  const { status: live, checkNow } = useRequestUpdates(profile.id, upsert, refetch)
   // Re-render every second so pending requests turn "expired" on time.
   const nowMs = useNow()
 
@@ -55,6 +59,20 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
     const created = await createMoneyRequest(input, REQUEST_TIMEOUT_SECONDS)
     upsert(created)
     openRequest(created.id)
+  }
+
+  /**
+   * Show only what the database saved, never a guess. If the answer is refused
+   * (already answered, expired…), reload so the screen shows the real state,
+   * then let FamilyResponse show the database's message.
+   */
+  async function handleRespond(requestId: string, decision: FamilyDecision) {
+    try {
+      upsert(await respondToRequest(requestId, decision))
+    } catch (e) {
+      await refetch().catch(() => {})
+      throw e
+    }
   }
 
   function renderPage() {
@@ -99,6 +117,7 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
             familyMember={request && findPerson(request.familyId)}
             viewerRole={role}
             nowMs={nowMs}
+            onRespond={handleRespond}
             onBack={() => goTo(homeFor(role))}
           />
         )
@@ -116,15 +135,7 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
       account={{ displayName: profile.displayName, onSignOut }}
       nav={{ role, currentView: view.name, onNavigate: goTo }}
     >
-      {error && (
-        <div className="warning" role="alert">
-          <strong className="warning-title">Could not refresh your requests.</strong>
-          <p>{error} What you see below may be out of date.</p>
-          <button type="button" onClick={reload}>
-            Try again
-          </button>
-        </div>
-      )}
+      <ConnectionNotice live={live} loadError={error} onRetry={checkNow} />
       {showLoading ? (
         <p className="loading" role="status">
           Loading your requests…

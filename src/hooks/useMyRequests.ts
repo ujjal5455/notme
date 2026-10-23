@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { listMyRequests } from '../lib/api/requests'
+import { mergeLoaded, upsertRequest } from '../lib/requestList'
 import type { MoneyRequest } from '../types/domain'
 
 /** The signed-in user's requests (RLS decides which), with loading and error states. */
@@ -15,7 +16,7 @@ export function useMyRequests(userId: string) {
     listMyRequests()
       .then((rows) => {
         if (ignore) return
-        setRequests(rows)
+        setRequests((previous) => mergeLoaded(previous, rows))
         setError(null)
       })
       .catch((e: unknown) => {
@@ -30,8 +31,7 @@ export function useMyRequests(userId: string) {
     }
   }, [userId, reloadKey])
 
-  // Load again whenever the person comes back to this tab or app, so a request
-  // sent while they were away shows up. (Phase 6 adds live updates.)
+  // Load again whenever the person comes back to this tab or app.
   useEffect(() => {
     function handleVisible() {
       if (document.visibilityState === 'visible') setReloadKey((k) => k + 1)
@@ -40,16 +40,23 @@ export function useMyRequests(userId: string) {
     return () => document.removeEventListener('visibilitychange', handleVisible)
   }, [])
 
-  /** Load the whole list again. */
+  /** Load the whole list again (Refresh / Try again buttons). Failures show the error banner. */
   const reload = () => setReloadKey((k) => k + 1)
 
-  /** Put one new or changed request into the list, newest first, without reloading everything. */
-  const upsert = (changed: MoneyRequest) =>
-    setRequests((previous) =>
-      [changed, ...previous.filter((r) => r.id !== changed.id)].sort((a, b) =>
-        b.createdAt.localeCompare(a.createdAt),
-      ),
-    )
+  /**
+   * Load the whole list again for polling. Unlike reload(), it returns a Promise
+   * that REJECTS on failure, so the caller can tell the person they are offline.
+   */
+  const refetch = useCallback(async () => {
+    const rows = await listMyRequests()
+    setRequests((previous) => mergeLoaded(previous, rows))
+    setError(null)
+  }, [])
 
-  return { requests, loading, error, reload, upsert }
+  /** Put one new or changed request into the list without reloading everything. */
+  const upsert = useCallback((changed: MoneyRequest) => {
+    setRequests((previous) => upsertRequest(previous, changed))
+  }, [])
+
+  return { requests, loading, error, reload, refetch, upsert }
 }

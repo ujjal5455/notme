@@ -386,12 +386,6 @@ textarea[aria-invalid='true'] {
   color: var(--color-approved-text);
 }
 
-.banner-demo-hint {
-  font-size: 0.9rem;
-  border-top: 1px dashed currentColor;
-  padding-top: 0.5rem;
-}
-
 .family-response {
   margin: 1rem 0;
 }

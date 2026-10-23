@@ -43,7 +43,6 @@ export function Layout({ account, nav, children }: LayoutProps) {
 
       <p className="demo-banner">
         <strong>Demo prototype:</strong> made-up people and data only. No real money is sent.
-        Requests are saved online; Confirm/Reject and live updates come in the next phase.
       </p>
 
       {nav && (
