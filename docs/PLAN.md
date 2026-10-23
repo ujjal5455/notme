@@ -63,7 +63,7 @@
 | 7 | C `src/hooks/useCountdown.ts`, `src/lib/alertSound.ts`. M `src/config.ts`, WarningPanel, CSS, docs. **As built:** `useCountdown.ts` already existed (Phase 4); C `supabase/migrations/0005_server_time.sql`, `src/lib/api/serverTime.ts`, `src/hooks/useServerOffset.ts`, `src/hooks/useNewWarnings.ts`, `src/components/TimeLeft.tsx`, `src/lib/alertSound.ts` (+ test); M `SignedInApp.tsx`, `ElderHome.tsx`, `RequestDetail.tsx`, `CreateRequest.tsx`, `FamilyResponse.tsx`, `PairFamily.tsx`, CSS, fake Supabase, `README.md`. `WarningPanel` unchanged (the beep lives in `useNewWarnings`) |
 | 8 | C `docs/DEMO_SCRIPT.md`, more tests. M `README.md`, `docs/LEARNING_GUIDE.md` |
 | 9 | C `docs/DISCLOSURE.md`. M README, PLAN, BUILD_LOG, DEMO_SCRIPT |
-| parallel | C `docs/USER_FLOW_FEEDBACK.md` (teammate) |
+| parallel | C `docs/USER_FLOW_FEEDBACK.md` (teammate). **As built (2026-10-23):** design review for the Android event app (Notme) from the team's discussion; no user testing yet; includes a role-play script for the event |
 
 ## 3. Data model (draft — implemented in Phase 3)
 
