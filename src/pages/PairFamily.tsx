@@ -55,13 +55,14 @@ export function PairFamily({ onLinked }: PairFamilyProps) {
             spellCheck={false}
             maxLength={12}
             aria-invalid={errorMessage ? true : undefined}
+            aria-describedby={errorMessage ? 'pairing-error' : undefined}
             value={code}
             onChange={(e) => setCode(e.target.value)}
           />
         </div>
 
         {errorMessage && (
-          <p className="field-error" role="alert">
+          <p id="pairing-error" className="field-error" role="alert">
             {errorMessage}
           </p>
         )}

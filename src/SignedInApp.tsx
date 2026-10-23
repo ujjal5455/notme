@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ConnectionNotice } from './components/ConnectionNotice'
 import { Layout } from './components/Layout'
 import { REQUEST_TIMEOUT_SECONDS } from './config'
 import { useMyRequests } from './hooks/useMyRequests'
+import { useNewWarnings } from './hooks/useNewWarnings'
 import { useNow } from './hooks/useNow'
 import { useRequestUpdates } from './hooks/useRequestUpdates'
+import { useServerOffset } from './hooks/useServerOffset'
+import { unlockAlertSound } from './lib/alertSound'
 import { createMoneyRequest, respondToRequest } from './lib/api/requests'
 import { AboutSafety } from './pages/AboutSafety'
 import { CreateRequest } from './pages/CreateRequest'
@@ -37,16 +40,45 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
   const { requests, loading, error, reload, refetch, upsert } = useMyRequests(profile.id)
   // Live updates from Supabase Realtime, or polling every few seconds if that fails.
   const { status: live, checkNow } = useRequestUpdates(profile.id, upsert, refetch)
-  // Re-render every second so pending requests turn "expired" on time.
-  const nowMs = useNow()
+  // "Now" in SERVER time, refreshed every second, so pending requests turn
+  // "expired" on time even on a phone whose clock is wrong. Display only:
+  // the database itself refuses late answers.
+  const serverOffsetMs = useServerOffset()
+  const nowMs = useNow() + serverOffsetMs
+  const { newWarnings, markSeen } = useNewWarnings(requests, nowMs, serverOffsetMs, role === 'elder')
+
+  // Browsers only allow sound after the person has tapped or typed on the page,
+  // so unlock the warning beep at their first tap or key press.
+  useEffect(() => {
+    document.addEventListener('pointerdown', unlockAlertSound)
+    document.addEventListener('keydown', unlockAlertSound)
+    return () => {
+      document.removeEventListener('pointerdown', unlockAlertSound)
+      document.removeEventListener('keydown', unlockAlertSound)
+    }
+  }, [])
+
+  // After each screen change, move keyboard and screen-reader focus to the new
+  // screen's content (not on the first draw, so the page doesn't jump on load).
+  const firstDraw = useRef(true)
+  useEffect(() => {
+    if (firstDraw.current) {
+      firstDraw.current = false
+      return
+    }
+    document.getElementById('main')?.focus({ preventScroll: true })
+  }, [view])
 
   // Every screen change goes through here, so each new screen starts at the top.
   function goTo(nextView: View) {
+    // Leaving a request's screen means the elder has seen what happened to it.
+    if (view.name === 'requestDetail') markSeen(view.requestId)
     setView(nextView)
     window.scrollTo(0, 0)
   }
 
   function openRequest(requestId: string) {
+    markSeen(requestId)
     goTo({ name: 'requestDetail', requestId })
   }
 
@@ -56,6 +88,7 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
 
   /** May throw (no connection, not linked…); RequestForm shows the message. */
   async function handleCreate(input: NewRequestInput) {
+    unlockAlertSound() // still inside the Send tap, so the browser allows it
     const created = await createMoneyRequest(input, REQUEST_TIMEOUT_SECONDS)
     upsert(created)
     openRequest(created.id)
@@ -83,6 +116,7 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
             elder={elder}
             familyMember={familyMember}
             requests={requests}
+            newWarnings={newWarnings}
             nowMs={nowMs}
             onCreateRequest={() => goTo({ name: 'createRequest' })}
             onOpenRequest={openRequest}

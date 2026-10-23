@@ -42,7 +42,17 @@ function createFake() {
   let nextId = 1
   let channels: FakeChannel[] = []
   // realtime: whether new channels connect ('live') or fail ('fail').
-  const state = { networkDown: false, realtime: 'live' as 'live' | 'fail' }
+  // serverAheadMs: how far the "database clock" is ahead of the phone's clock
+  //   (e.g. 300_000 = the phone is 5 minutes slow).
+  // serverTimeMissing: pretend 0005_server_time.sql was not run.
+  const state = {
+    networkDown: false,
+    realtime: 'live' as 'live' | 'fail',
+    serverAheadMs: 0,
+    serverTimeMissing: false,
+  }
+  /** The database's clock. Every time the "server" sets or checks uses this. */
+  const serverNow = () => Date.now() + state.serverAheadMs
 
   function reset() {
     users = []
@@ -54,6 +64,8 @@ function createFake() {
     channels = []
     state.networkDown = false
     state.realtime = 'live'
+    state.serverAheadMs = 0
+    state.serverTimeMissing = false
   }
 
   /** Realtime delivery: tell every open channel whose owner may read this request. */
@@ -176,7 +188,7 @@ function createFake() {
       const row = {
         code,
         elder_id: me,
-        expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+        expires_at: new Date(serverNow() + 10 * 60_000).toISOString(),
         used_at: null,
         used_by: null,
       }
@@ -191,13 +203,13 @@ function createFake() {
       const pc = tables.pairing_codes.find((c) => c.code === code)
       if (!pc) return fail('That code is not valid. Check it and try again.')
       if (pc.used_at) return fail('That code has already been used. Ask for a new one.')
-      if (Date.parse(String(pc.expires_at)) <= Date.now()) return fail('That code has expired. Ask for a new one.')
+      if (Date.parse(String(pc.expires_at)) <= serverNow()) return fail('That code has expired. Ask for a new one.')
       if (tables.family_links.some((l) => l.elder_id === pc.elder_id)) {
         return fail('This elder is already linked to a family member.')
       }
       const link = { id: `link-${nextId++}`, elder_id: pc.elder_id, family_id: me }
       tables.family_links.push(link)
-      pc.used_at = new Date().toISOString()
+      pc.used_at = new Date(serverNow()).toISOString()
       pc.used_by = me
       return ok(link)
     },
@@ -216,7 +228,7 @@ function createFake() {
       const note = String(p_note ?? '').trim() || null
       if (note && note.length > 200) return fail('Note must be at most 200 characters.')
       const timeout = Math.max(15, Math.min(600, Number(p_timeout_seconds ?? 60)))
-      const now = Date.now()
+      const now = serverNow()
       const row = {
         id: `req-${nextId++}`,
         elder_id: me,
@@ -241,15 +253,20 @@ function createFake() {
       }
       const row = tables.money_requests.find((r) => r.id === p_request_id)
       // Same single conditional check as the SQL: mine AND pending AND not expired.
-      if (row && row.family_id === me && row.status === 'pending' && Date.parse(String(row.expires_at)) > Date.now()) {
+      if (row && row.family_id === me && row.status === 'pending' && Date.parse(String(row.expires_at)) > serverNow()) {
         row.status = p_decision
-        row.responded_at = new Date().toISOString()
+        row.responded_at = new Date(serverNow()).toISOString()
         broadcast('UPDATE', row)
         return ok({ ...row })
       }
       if (!row || row.family_id !== me) return fail('Request not found.')
       if (row.status !== 'pending') return fail('This request has already been answered.')
       return fail('This request has expired, so it can no longer be answered.')
+    },
+    server_now() {
+      if (!uid()) return fail('permission denied for function server_now')
+      if (state.serverTimeMissing) return fail('Could not find the function public.server_now')
+      return ok(new Date(serverNow()).toISOString())
     },
   }
 
@@ -366,6 +383,7 @@ function createFake() {
   return {
     supabase,
     state,
+    serverNow,
     reset,
     insertRow,
     createPairedAccounts,

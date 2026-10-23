@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { playAlertSound } from './lib/alertSound'
 import { SignedInApp } from './SignedInApp'
 import { fake } from './test/fakeSupabase'
 import type { Profile } from './types/domain'
@@ -7,6 +8,8 @@ import type { Profile } from './types/domain'
 vi.mock('./lib/supabaseClient', async () => ({
   supabase: (await import('./test/fakeSupabase')).fake.supabase,
 }))
+// Replace the beep with a recorder, so tests can check WHEN the app tries to beep.
+vi.mock('./lib/alertSound', () => ({ playAlertSound: vi.fn(() => false), unlockAlertSound: vi.fn() }))
 
 let asha: Profile
 let ravi: Profile
@@ -38,6 +41,7 @@ function fillAndSend(amount = '2500', recipient = ' test.shop@demo-upi ') {
 }
 
 beforeEach(async () => {
+  vi.mocked(playAlertSound).mockClear()
   fake.reset()
   ;({ elder: asha, family: ravi } = await fake.createPairedAccounts())
 })
@@ -215,5 +219,84 @@ describe('SignedInApp (Phase 6: answers and live updates)', () => {
     fake.state.realtime = 'fail'
     await renderAsElder()
     expect(await screen.findByText(/checking for updates every few seconds/i)).toBeInTheDocument()
+  })
+})
+
+/** A saved row in the fake, with times relative to the fake's DATABASE clock. */
+function insertRequest(fields: Record<string, unknown>) {
+  const now = fake.serverNow()
+  fake.insertRow('money_requests', {
+    id: 'req-x',
+    elder_id: asha.id,
+    family_id: ravi.id,
+    amount_inr: 5000,
+    recipient: 'shop@demo-upi',
+    note: null,
+    status: 'pending',
+    created_at: new Date(now - 10_000).toISOString(),
+    expires_at: new Date(now + 50_000).toISOString(),
+    responded_at: null,
+    ...fields,
+  })
+}
+
+describe('SignedInApp (Phase 7: time, warnings and failures)', () => {
+  it("counts down by the database's clock, even when the phone is 5 minutes slow", async () => {
+    fake.state.serverAheadMs = 5 * 60_000
+    await savedRequest() // the database gives Ravi 60 seconds
+    await renderAsFamily()
+    click(/₹2,500/)
+    // Without the correction this would say 6:00.
+    await waitFor(() =>
+      expect(document.querySelector('.time-left')).toHaveTextContent(/time left to answer: (1:00|0:59)$/i),
+    )
+  })
+
+  it("refuses a late answer even if the phone's wrong clock still shows buttons", async () => {
+    fake.state.serverAheadMs = 2 * 60_000 // the phone is 2 minutes slow…
+    fake.state.serverTimeMissing = true //  …and the clock can't be corrected
+    insertRequest({ expires_at: new Date(fake.serverNow() - 1000).toISOString() }) // already late
+    await renderAsFamily()
+    click(/₹5,000/)
+    click('Confirm request') // the phone thinks there are ~2 minutes left
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'This request has expired, so it can no longer be answered.',
+    )
+  })
+
+  it('elder home: a rejection arriving while the app is open shows a Pause alert and beeps once', async () => {
+    const id = await savedRequest()
+    await renderAsElder() // on the home screen, not on the request
+
+    await fake.signInAs('family1@example.com')
+    await fake.supabase.rpc('respond_to_request', { p_request_id: id, p_decision: 'rejected' })
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/pause\. your ₹2,500 request has not been confirmed\. do not pay/i)
+    expect(playAlertSound).toHaveBeenCalledTimes(1)
+
+    click('Open the ₹2,500 request')
+    expect(screen.getByRole('alert')).toHaveTextContent(/ravi \(demo\) rejected this request/i)
+    click('Back')
+    expect(screen.queryByRole('button', { name: /open the ₹2,500 request/i })).not.toBeInTheDocument()
+    expect(playAlertSound).toHaveBeenCalledTimes(1) // not again
+  })
+
+  it('a request nobody answers turns into a warning on the home screen by itself', async () => {
+    insertRequest({ expires_at: new Date(fake.serverNow() + 1500).toISOString() })
+    await renderAsElder()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    const alert = await screen.findByRole('alert', {}, { timeout: 4000 })
+    expect(alert).toHaveTextContent(/your ₹5,000 request has not been confirmed/i)
+    expect(playAlertSound).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not announce old warnings from before the app was opened', async () => {
+    const tenMinutesAgo = new Date(fake.serverNow() - 10 * 60_000).toISOString()
+    insertRequest({ status: 'rejected', created_at: tenMinutesAgo, expires_at: tenMinutesAgo, responded_at: tenMinutesAgo })
+    await renderAsElder()
+    expect(screen.getByRole('button', { name: /₹5,000/ })).toHaveTextContent(/rejected by family/i)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(playAlertSound).not.toHaveBeenCalled()
   })
 })

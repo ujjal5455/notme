@@ -1,6 +1,7 @@
 import { FamilyResponse } from '../components/FamilyResponse'
 import { StatusBadge } from '../components/StatusBadge'
 import { StatusBanner } from '../components/StatusBanner'
+import { TimeLeft } from '../components/TimeLeft'
 import { formatDateTime, formatInr } from '../lib/format'
 import { getEffectiveStatus } from '../lib/requestStatus'
 import type { FamilyDecision, MoneyRequest, Profile, UserRole } from '../types/domain'
@@ -50,6 +51,13 @@ export function RequestDetail({
         to <strong>{request.recipient}</strong>
       </p>
       <StatusBadge status={status} />
+      {status === 'pending' && (
+        <TimeLeft
+          expiresAt={request.expiresAt}
+          nowMs={nowMs}
+          label={viewerRole === 'family' ? 'Time left to answer' : `Time left for ${familyName} to answer`}
+        />
+      )}
 
       {viewerRole === 'elder' ? (
         <StatusBanner status={status} familyName={familyName} />

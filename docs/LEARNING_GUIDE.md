@@ -1052,6 +1052,111 @@ If Asha's live connection is down, step 5 happens through polling instead, at mo
 
 ---
 
+# Phase 7 — Timeout, warnings, accessibility and failure handling
+
+## 10. Timeout, visual/audio warnings and failure handling
+
+### One deadline, three layers
+| Layer | Where | Job | Can it be wrong? |
+|---|---|---|---|
+| **The real deadline** | Database: `expires_at = now() + …`; `respond_to_request` checks `expires_at > now()` | **Decides** whether an answer counts | No. One clock: the database's |
+| **The shown status** | `getEffectiveStatus(request, nowMs)` | Shows pending / expired | Only if "now" is wrong |
+| **The countdown** | `TimeLeft` | Shows time left | Only if "now" is wrong |
+
+**Expiry is enforced by the database and displayed by the client.** Nothing is ever *stored* as "expired": a late request stays `pending` in the table and is *shown* as Unconfirmed. If the phone's clock is wrong, the screen can be wrong by that much, but a late answer is still refused.
+
+### Client clock vs database time
+*Analogy:* two people meet "at 5 o'clock", but one watch is 5 minutes slow. They agree the station clock is the one that counts, and you correct your watch by checking it once.
+```ts
+// src/lib/api/serverTime.ts
+const t0 = Date.now()
+const { data } = await supabase.rpc('server_now')   // the database reads its clock
+const t1 = Date.now()
+const offset = Date.parse(data) - (t0 + t1) / 2      // assume it read it halfway through the trip
+```
+`SignedInApp` then uses `nowMs = useNow() + serverOffsetMs` everywhere: badges, the Unconfirmed warning and the countdown. Example: phone 5 minutes slow → offset ≈ +300 000 ms → a request with 60 s left shows **1:00**, not **6:00**.
+
+### Timers in React need cleaning up
+`useNow` starts `setInterval` in an effect and returns `() => clearInterval(id)`. Forget the clean-up and every screen you ever opened keeps a timer running. `useRequestUpdates` does the same with its polling timer and Realtime channel.
+
+### Browser audio restrictions
+Browsers have an **autoplay policy**: a page may only start sound **after the person has tapped or typed** on it. The warning appears 60 s after the last tap, so Flod **unlocks** the audio system during a tap (`pointerdown`/`keydown` anywhere, and the Send tap), and later `playAlertSound()` plays two short 880 Hz beeps. `src/lib/alertSound.ts` never throws: no Web Audio → `false`; blocked → `false`; broken device → `false`.
+
+**Try sound, never rely on it**: phones are muted, people can't always hear. The visual warning is complete on its own.
+
+### Accessible warnings
+- The warning uses **words + symbol + thick border**, never colour alone. Badges say "Rejected by family", not just red.
+- `role="alert"`: screen readers announce the Pause warning as soon as it appears.
+- `role="timer"` on the countdown: screen readers don't announce every tick (that would be unusable).
+- **Focus management:** when the screen changes, focus moves to the new content (`#main`); when Ravi's buttons disappear after answering, focus moves to the outcome. Otherwise keyboard and screen-reader users are dropped back at the top of the page.
+- Contrast measured with the WCAG formula: every text/background pair ≥ 7.3:1 (AA needs 4.5:1); input borders and the focus ring ≥ 3:1.
+
+### An error is not a security guarantee
+Hiding the buttons on an expired request is **kindness**, not security. The guarantee is the database's conditional update. Likewise "Could not connect" is an honest error message, not protection. The protection is that nothing is shown as confirmed until the server says so.
+
+## Failure-mode table
+
+| Failure | What Flod does | What the person sees | Tested by |
+|---|---|---|---|
+| No reply in time | Status calculated as expired; DB refuses late answers | Pause warning (home + detail) "no reply is not proof of a scam…"; beep if allowed | `SignedInApp.test` "nobody answers… home screen"; manual step 2 |
+| Family rejects | `respond_to_request` → Realtime/poll | Pause warning "rejected… do not pay unless you speak to them directly"; beep | "rejection arriving while the app is open"; manual step 3 |
+| Refresh / reopen | Reload from DB; no new alert for old warnings | True state with badges | "does not announce old warnings"; manual step 5 |
+| Slow network | Buttons disabled, *Sending…* | Waits; no double sends | `FamilyResponse.test` "double tap sends only once" |
+| Disconnected network | Realtime → polling → offline; send fails | "Can't reach the server… Don't pay…" + Try again; form keeps input | `useRequestUpdates.test`, "keeps the form…"; Phase 6 manual step 9 |
+| Family's browser closed | Nothing to do: the request just expires | Unconfirmed warning | same as "no reply" |
+| Late answer | DB conditional update: 0 rows | "This request has expired, so it can no longer be answered." | "refuses a late answer even if the phone's wrong clock still shows buttons" |
+| Duplicate click / second answer | Busy state; DB refuses | "already been answered"; screen corrects itself | Phase 6 tests |
+| Phone clock wrong | Offset from `server_now()` | Countdown ≈ true time; late answers refused anyway | "counts down by the database's clock…"; manual step 6 |
+| Sound blocked / muted | `playAlertSound()` → false | The full visual warning | `alertSound.test`; manual step 4 |
+| `0005` not run | Offset stays 0 | Phone's clock used; still safe | "refuses a late answer…" (runs with `server_now` missing) |
+| App closed | Nothing runs on the phone; DB still enforces the deadline | On reopening: Loading, then the true state | — (limitation, README) |
+
+## Tracing one example: nobody answers
+Asha sends ₹5,000 at 17:30:00 (database time); her phone's clock says 17:28:00 (2 minutes slow). Ravi's phone is in his pocket.
+1. On opening, `useServerOffset` measured the offset: ≈ +120 000 ms. So `nowMs` = phone time + 2 min = database time.
+2. `create_money_request` sets `expires_at = 17:31:00`. The detail screen shows "Time left for Ravi (demo) to answer: 1:00" (not 3:00).
+3. Asha taps **Back** → Home. Every second `useNow` ticks; at 17:31:00 `getEffectiveStatus` returns `'expired'`.
+4. `useNewWarnings`: the request's warning moment (17:31:00 database time = 17:29:00 phone time) is after the screen opened, and Asha hasn't opened it since → it's a new warning → ElderHome shows **Pause. Your ₹5,000 request has not been confirmed. Do not pay…** (`role="alert"`) and the effect calls `playAlertSound()` once (two beeps if the audio was unlocked by her Send tap).
+5. Ravi wakes his phone at 17:33 and taps an old Confirm button still on screen → the database's `expires_at > now()` is false → *"This request has expired…"*.
+
+## How to run and test Phase 7
+- Run `supabase/migrations/0005_server_time.sql` once (README → Database setup step 3).
+- Automated: `npm test`. New: `src/lib/alertSound.test.ts` (no Web Audio; blocked before a tap; two beeps after; broken device), Phase 7 tests in `src/SignedInApp.test.tsx` (clock 5 min slow; late answer with a wrong clock; home alert + beep once; timeout on home; old warnings not repeated), focus test in `FamilyResponse.test.tsx`.
+- Manual: README → "Manual test: timeout, warnings, sound and accessibility (Phase 7)".
+
+## Phase 7 file-by-file
+
+| File | What / why | Inputs → outputs | Important parts | Common mistakes | Practice task |
+|---|---|---|---|---|---|
+| `supabase/migrations/0005_server_time.sql` | The database's "now" for the app | — → `timestamptz` | `stable`, `search_path = ''`, revoke anon | Granting it to `anon` | Explain why this can't weaken security |
+| `src/lib/api/serverTime.ts` | Measure the clock difference | — → offset ms | round-trip midpoint | Ignoring the trip time | Compute the offset by hand for t0=1000, t1=1400, server=5200 |
+| `src/hooks/useServerOffset.ts` | Measure once on open | — → offset (0 until known) | keeps 0 on failure | Blocking the screen until measured | Re-measure when the tab becomes visible |
+| `src/components/TimeLeft.tsx` | Quiet countdown | deadline + now → "0:59" | `Math.ceil`, `role="timer"` | Rounding down; announcing every tick | Show "less than 10 seconds" in bold |
+| `src/lib/alertSound.ts` | Best-effort beep | tap → unlocked; → true/false | `??=`, `state !== 'running'`, try/catch | Letting audio errors break Send; relying on sound | Make the beep three tones |
+| `src/hooks/useNewWarnings.ts` | Which warnings are new, beep once | requests + time → new warnings | warning moment vs opened-at, `beeped` ref | Beeping every second; beeping for old warnings | Add "expired while you were away" text |
+| `src/pages/ElderHome.tsx` | Prominent Pause alert on Home | new warnings → alert + "Open…" buttons | one paragraph, `role="alert"` | A small badge as the only signal | — |
+| `src/SignedInApp.tsx` | Server-time `nowMs`, unlock on first tap, focus on screen change | — | `useNow() + serverOffsetMs`, `markSeen` | Using the raw phone clock for display | — |
+| `src/components/FamilyResponse.tsx` | Focus to the outcome | status change → focus | `previousStatus` ref | Focus lost after buttons vanish | — |
+
+## Phase 7 exercises (no AI; answers aren't included)
+1. **Failure table from memory.** Cover the table above. For six failures, write what the elder sees. Then compare.
+2. **Independent debugging exercise.** In `src/SignedInApp.tsx` change `const nowMs = useNow() + serverOffsetMs` to `const nowMs = useNow()`. Before running anything, predict which test fails and what its message will say. Run `npm test`, read the failure, and explain in two sentences what a family member with a slow phone would have seen. Undo it.
+3. **Hear the autoplay policy.** In any web page's DevTools console, run `const a = new AudioContext(); a.state`. Then click the page and run `await a.resume(); a.state`. What changed, and why does Flod unlock sound on the first tap?
+4. **Keyboard-only run.** Do manual step 7 and write down any place where you couldn't see where the focus was.
+5. **Wording check.** Find every message in `src/` that appears after a rejection or timeout. Does any of them say "scam" as a fact, or "safe" about an approval? (They mustn't.)
+
+## Phase 7 self-test
+1. Which layer decides whether an answer is late, and which layers only display?
+2. How does Flod estimate the database clock, and why use the midpoint of the round trip?
+3. What happens to countdowns if `0005_server_time.sql` was never run? Is that a security problem?
+4. Why must a timer started in `useEffect` be cleared in the clean-up?
+5. Why can't Flod just play a sound when the warning appears, without any earlier tap?
+6. Name three things that make the Pause warning accessible without sound or colour.
+7. Why does Flod move focus after the family member answers?
+8. Why is a hidden button "kindness, not security"?
+
+---
+
 ## 12. Glossary  *(grows every phase)*
 
 - **Component:** a function that returns UI.
@@ -1112,3 +1217,12 @@ If Asha's live connection is down, step 5 happens through polling instead, at mo
 - **Conditional update:** an `UPDATE … WHERE` that only changes rows still meeting every rule.
 - **Idempotent:** safe to run more than once with the same result.
 - **`useCallback`:** keeps the same function between redraws, so effects that depend on it don't restart.
+- **Clock skew / server offset:** how far a phone's clock is from the database's; added to `Date.now()` to get server time.
+- **Round trip:** the time from sending a request to getting its answer.
+- **Autoplay policy:** browsers block sound until the person has interacted with the page.
+- **Web Audio / AudioContext:** the browser's sound system for making tones from code.
+- **Oscillator / gain:** a tone generator / a volume control in Web Audio.
+- **`role="alert"` / `role="status"` / `role="timer"`:** tell screen readers to announce now / announce politely / not announce every change.
+- **Focus management:** moving keyboard focus to the right place when the screen changes.
+- **Contrast ratio:** how different text and background brightness are; WCAG AA needs 4.5:1 for normal text.
+- **Failure mode:** one way something can go wrong, with what the app does about it.

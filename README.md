@@ -6,7 +6,7 @@
 
 ## Current status
 
-Phase 6 of 9. **The core flow works end to end** on two devices: accounts and in-person pairing (Phase 4); the elder's request is saved in Supabase and appears in the linked family member's inbox (Phase 5); the family member **confirms or rejects**, and the elder's screen **updates by itself** through Supabase Realtime, with polling every 4 seconds as the fallback (Phase 6). Requires `0004_realtime.sql` to be run on your project. **Not yet:** server-clock correction for the countdown, an audible alert and the full accessibility/failure pass (Phase 7). See [`docs/PLAN.md`](docs/PLAN.md) for progress and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md) for what was done and tested.
+Phase 6 of 9. **The core flow works end to end** on two devices: accounts and in-person pairing (Phase 4); the elder's request is saved in Supabase and appears in the linked family member's inbox (Phase 5); the family member **confirms or rejects**, and the elder's screen **updates by itself** through Supabase Realtime, with polling every 4 seconds as the fallback (Phase 6). Phase 7 adds a countdown corrected to the **database's clock**, a large **Pause** alert on the elder's home screen when a request is rejected or runs out of time, a **best-effort beep** (the visual warning never depends on it), focus handling for keyboard and screen-reader users, and failure tests. Requires `0004_realtime.sql` and `0005_server_time.sql` to be run on your project. See [`docs/PLAN.md`](docs/PLAN.md) for progress and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md) for what was done and tested.
 
 ## Run it locally
 
@@ -63,6 +63,20 @@ First run `supabase/migrations/0004_realtime.sql` in the SQL Editor (Database se
 9. **Offline:** window A → DevTools → Network → **Offline**, then switch to another browser tab and back (this makes the app check again) → a warning says "Can't reach the server… Don't pay until you can see your family member's answer." Set **No throttling** again and press **Try again** → the warning clears. *(Chrome's Offline mode may leave an already-open live connection running, so without the tab switch the warning can take much longer to appear.)*
 10. **Third account:** a stranger account is never shown the request (it stays on pairing). `rls_checks.sql` → "respond: stranger C cannot approve" proves the database refuses it too.
 
+### Manual test: timeout, warnings, sound and accessibility (Phase 7)
+
+First run `supabase/migrations/0005_server_time.sql` in the SQL Editor. Windows A (Asha) and B (Ravi) side by side, sound on (volume low).
+
+1. **Countdown:** A sends ₹2,500. Both detail screens show a countdown ("Time left for Ravi (demo) to answer: 0:59" / "Time left to answer: 0:59") that ticks down.
+2. **Timeout + beep:** A goes back to **Home** and waits. At 0:00 a large **Pause** alert appears at the top of Home ("Your ₹2,500 request has not been confirmed. Do not pay…") and you should hear **two short beeps**. In B the buttons are replaced by "This request expired before it was answered…".
+3. **Rejection + beep on any screen:** send another request; B rejects it while A is on Home → Pause alert + beeps on A. Tap **Open the ₹2,500 request** → full warning; **Back** → the Home alert is gone.
+4. **Sound blocked:** mute the computer (or the tab) and repeat step 3 → the visual warning is exactly the same; nothing important is lost.
+5. **Old warnings aren't repeated:** reload A → no new alert or beep for those old requests; their cards still say "Rejected by family" / "Unconfirmed — no reply".
+6. **Wrong phone clock (optional):** set your computer's clock 2 minutes slow (Windows: Settings → Time & language → turn off "Set time automatically", then change it), reload A and send a request → the countdown still starts at about **1:00**, not 3:00. Turn automatic time back on afterwards.
+7. **Keyboard only (A or B):** reload, put the mouse away and use **Tab / Shift+Tab / Enter / Space**. Every button and field gets a visible orange focus ring; after Ravi presses Reject with the keyboard, focus moves to "You rejected this request…" (a screen reader reads it).
+8. **Zoom:** browser zoom 200% (Ctrl + +) at a phone-sized window → text wraps, nothing is cut off, no sideways scrolling.
+9. **Screen reader (optional):** Windows Narrator (Ctrl + Win + Enter) reads the Pause warning as soon as it appears, and reads status badges as words ("Rejected by family"), not just colours.
+
 ## Scripts
 
 | Command | What it does |
@@ -84,6 +98,7 @@ The database lives in a free [Supabase](https://supabase.com) project. Everythin
 | `supabase/migrations/0002_rls.sql` | Turns on Row Level Security; signed-in users may only **read** their own rows |
 | `supabase/migrations/0003_functions.sql` | The five functions that are the **only** way to write data |
 | `supabase/migrations/0004_realtime.sql` | Turns on live updates (Supabase Realtime) for `money_requests` |
+| `supabase/migrations/0005_server_time.sql` | `server_now()`: lets the app correct countdowns for a phone with a wrong clock |
 | `supabase/checks/rls_checks.sql` | 36 automatic security checks; prints PASS/FAIL per check |
 
 ### Step by step
@@ -92,7 +107,7 @@ Dashboard labels may differ slightly between Supabase versions.
 
 1. **Create the project.** Sign in at supabase.com → **New project**. Pick a region near your users (for India, Mumbai). Save the database password in a password manager; you will not need it for this app, and it must never go into this repo.
 2. **Email sign-in for the demo.** **Authentication → Sign In / Providers → Email**: keep Email enabled and turn **off "Confirm email"**. *Why:* Supabase's built-in email sender allows only a few emails per hour, which breaks a live demo. *Trade-off:* anyone can sign up with any address. Acceptable for synthetic demo accounts only; documented as a limitation.
-3. **Apply the migrations, in order.** **SQL Editor → New query** → paste the whole of `0001_tables.sql` → **Run** → expect "Success. No rows returned". Repeat with `0002_rls.sql`, then `0003_functions.sql`, then `0004_realtime.sql`. The editor may warn about "destructive operations" (`revoke`, `drop policy if exists`); that is expected. Each file is safe to run again if something went wrong halfway.
+3. **Apply the migrations, in order.** **SQL Editor → New query** → paste the whole of `0001_tables.sql` → **Run** → expect "Success. No rows returned". Repeat with `0002_rls.sql`, then `0003_functions.sql`, `0004_realtime.sql` and `0005_server_time.sql`. The editor may warn about "destructive operations" (`revoke`, `drop policy if exists`); that is expected. Each file is safe to run again if something went wrong halfway.
 4. **Run the security checks.** New query → paste `supabase/checks/rls_checks.sql` → **Run**. Every row should say **PASS** (36 rows). The script creates four throwaway `@example.test` users and deletes them again. If any row says FAIL, stop and investigate before continuing.
 5. **Double-check in the dashboard.** **Table Editor**: each of the four tables should show RLS as enabled. **Advisors → Security Advisor**: there should be no errors about these tables.
 6. **Copy the two public settings** (needed from Phase 4). **Project Settings → API Keys** (and **Data API** for the URL): copy the **Project URL** and the **publishable key** (or the legacy **anon public** key). Then:
@@ -118,7 +133,10 @@ With Docker Desktop running, `npx supabase init` then `npx supabase start` start
 - A family member may be linked to several elders in the database, but the screens show only the first linked elder's name.
 - The elder's pairing screen does not notice the new link by itself; the elder taps **My family member has entered the code**.
 - Live updates depend on Supabase Realtime. If it isn't connected, the app checks every 4 seconds instead and says so; if the server can't be reached at all, it shows a "Can't reach the server… don't pay" warning. A screen can still be up to a few seconds behind.
-- The countdown uses the phone's own clock against the deadline set by the database clock; a phone with a wrong clock shows "expired" too early or too late (Phase 7 corrects this). The database still refuses late answers.
+- Countdowns and the "Unconfirmed" display are corrected by the database's clock (`server_now()`, measured once when the app opens, accurate to about half the network round trip). If `0005_server_time.sql` wasn't run or the check fails, the phone's own clock is used. Either way **the database decides** whether an answer is late.
+- The beep is best effort: browsers block sound until the person has tapped the page, phones may be muted, and people may not hear it. The visual warning is always shown.
+- Warnings are announced (alert + beep) only for requests that turn into a warning **while the app is open**. A request that expired while the app was closed shows its "Unconfirmed" badge on reopening, without a new alert.
+- Nothing runs while the app is closed: no push notifications or SMS. The elder must have the app open to see the answer.
 
 ## Environment variables
 

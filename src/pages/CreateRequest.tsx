@@ -1,4 +1,5 @@
 import { RequestForm } from '../components/RequestForm'
+import { REQUEST_TIMEOUT_SECONDS } from '../config'
 import type { NewRequestInput, Profile } from '../types/domain'
 
 interface CreateRequestProps {
@@ -18,7 +19,9 @@ export function CreateRequest({ familyMember, onSubmit, onCancel }: CreateReques
         details and confirm or reject them.
       </p>
       <p className="notice">
-        Demo: use made-up details only. Flod never sends money.
+        Demo: use made-up details only. Flod never sends money. {familyName} has{' '}
+        {REQUEST_TIMEOUT_SECONDS} seconds to answer. That is kept short for the demo; it is not a
+        recommended real-life waiting time.
       </p>
 
       <RequestForm onSubmit={onSubmit} onCancel={onCancel} />

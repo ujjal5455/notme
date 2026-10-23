@@ -390,6 +390,11 @@ textarea[aria-invalid='true'] {
   margin: 1rem 0;
 }
 
+/* Focus is moved here by code (not by Tab), so show a ring only for keyboard users. */
+.family-response:focus:not(:focus-visible) {
+  outline: none;
+}
+
 /* ---------- Sign-in, role choice and pairing (Phase 4) ---------- */
 .loading {
   padding: 2rem 0;
@@ -447,6 +452,17 @@ button:disabled {
   background: var(--color-surface);
   border: 3px solid var(--color-primary);
   border-radius: var(--radius);
+}
+
+/* ---------- Countdown and attention alert (Phase 7) ---------- */
+.time-left {
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin: 0.75rem 0;
+}
+
+.time-left [role='timer'] {
+  font-variant-numeric: tabular-nums; /* digits don't jump around as they change */
 }
 
 /* ---------- Wider screens ---------- */

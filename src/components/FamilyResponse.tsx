@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FamilyDecision, RequestStatus } from '../types/domain'
 
 interface FamilyResponseProps {
@@ -12,6 +12,15 @@ interface FamilyResponseProps {
 export function FamilyResponse({ status, elderName, onRespond }: FamilyResponseProps) {
   const [sending, setSending] = useState<FamilyDecision | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // When the buttons disappear (answered, or time ran out), move keyboard and
+  // screen-reader focus to the outcome, instead of losing it to the top of the page.
+  const outcomeRef = useRef<HTMLDivElement>(null)
+  const previousStatus = useRef(status)
+  useEffect(() => {
+    if (previousStatus.current === 'pending' && status !== 'pending') outcomeRef.current?.focus()
+    previousStatus.current = status
+  }, [status])
 
   async function answer(decision: FamilyDecision) {
     if (sending) return // a double tap must not send twice
@@ -68,13 +77,15 @@ export function FamilyResponse({ status, elderName, onRespond }: FamilyResponseP
   }
 
   return (
-    <div className="family-response">
+    <div className="family-response" ref={outcomeRef} tabIndex={-1}>
       {error && (
         <p className="field-error" role="alert">
           {error}
         </p>
       )}
-      <p className="notice">{outcome[status]}</p>
+      <p className="notice" role="status">
+        {outcome[status]}
+      </p>
     </div>
   )
 }

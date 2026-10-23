@@ -13,7 +13,7 @@
 - [x] **Phase 4** — Authentication and trusted-family pairing *(code + automated tests 2026-10-23; manual two-browser test on real Supabase passed, reported by the user 2026-10-23)*
 - [x] **Phase 5** — Create requests and deliver to the linked family member *(code + automated tests 2026-10-23; manual two-browser test passed, reported by the user 2026-10-23)*
 - [x] **Phase 6** — Approve/reject and real-time status updates *(code + automated tests 2026-10-23; 0004 applied and manual two-browser test passed, reported by the user 2026-10-23)*
-- [ ] **Phase 7** — Timeout, warnings, accessibility, failure handling
+- [x] **Phase 7** — Timeout, warnings, accessibility, failure handling *(code + automated tests 2026-10-23; 0005 applied and manual checklist passed, reported by the user 2026-10-23)*
 - [ ] **Phase 8** — Tests, complete learning guide, demo script
 - [ ] **Phase 9** — Deployment and hackathon readiness
 
@@ -60,7 +60,7 @@
 | 4 | C `src/lib/supabaseClient.ts`, `src/auth/AuthProvider.tsx`, `src/pages/{SignIn,SignUp,ChooseRole,PairElder,PairFamily}.tsx`, `src/lib/api/{profile,pairing}.ts`; dep `@supabase/supabase-js`. M `App.tsx`, docs. **As built:** one `SignIn.tsx` with two modes (no `SignUp.tsx`); added `src/lib/api/errors.ts`, `src/auth/authContext.ts`, `src/SignedInApp.tsx`, `src/hooks/useCountdown.ts` (pulled forward from Phase 7), `src/test/fakeSupabase.ts`, `src/SignedInApp.test.tsx`; M `main.tsx`, `Layout.tsx`, `FamilyInbox.tsx`, `StatusBanner.tsx`, CSS, `README.md` |
 | 5 | C `src/lib/api/requests.ts`. M CreateRequest, ElderHome, FamilyInbox, tests, docs. **As built:** also C `src/hooks/useMyRequests.ts`; M `SignedInApp.tsx`, `RequestForm.tsx`, `FamilyResponse.tsx`, `RequestDetail.tsx`, `StatusBanner.tsx`, `Layout.tsx`, `src/test/fakeSupabase.ts`, `README.md` |
 | 6 | C `src/hooks/useRequestUpdates.ts`, `supabase/migrations/0004_realtime.sql`. M requests API, RequestDetail, ElderHome, docs. **As built:** also C `src/components/ConnectionNotice.tsx`, `src/lib/requestList.ts` (+ test), `src/components/FamilyResponse.test.tsx`, `src/hooks/useRequestUpdates.test.tsx`; M `FamilyResponse.tsx`, `SignedInApp.tsx`, `useMyRequests.ts`, `config.ts` (`POLL_INTERVAL_MS`), `StatusBanner.tsx`, `Layout.tsx`, fake Supabase, `README.md` |
-| 7 | C `src/hooks/useCountdown.ts`, `src/lib/alertSound.ts`. M `src/config.ts`, WarningPanel, CSS, docs |
+| 7 | C `src/hooks/useCountdown.ts`, `src/lib/alertSound.ts`. M `src/config.ts`, WarningPanel, CSS, docs. **As built:** `useCountdown.ts` already existed (Phase 4); C `supabase/migrations/0005_server_time.sql`, `src/lib/api/serverTime.ts`, `src/hooks/useServerOffset.ts`, `src/hooks/useNewWarnings.ts`, `src/components/TimeLeft.tsx`, `src/lib/alertSound.ts` (+ test); M `SignedInApp.tsx`, `ElderHome.tsx`, `RequestDetail.tsx`, `CreateRequest.tsx`, `FamilyResponse.tsx`, `PairFamily.tsx`, CSS, fake Supabase, `README.md`. `WarningPanel` unchanged (the beep lives in `useNewWarnings`) |
 | 8 | C `docs/DEMO_SCRIPT.md`, more tests. M `README.md`, `docs/LEARNING_GUIDE.md` |
 | 9 | C `docs/DISCLOSURE.md`. M README, PLAN, BUILD_LOG, DEMO_SCRIPT |
 | parallel | C `docs/USER_FLOW_FEEDBACK.md` (teammate) |
@@ -199,5 +199,16 @@ Sources (pages say "Last updated: 22 September 2026"):
 - [x] User runs `0004_realtime.sql` on the hosted project — user, 2026-10-23
 - [x] Manual: an answer in one browser appears in the other without Refresh (README checklist) — user, 2026-10-23
 
-### Phases 7–9
+### Phase 7
+- [x] Demo timeout is one config value (60 s), labelled in the UI as a demo value
+- [x] Expired = pending + deadline passed, shown as "Unconfirmed"; **enforced by the database** (`respond_to_request`), displayed by the client with server-time correction (`0005`)
+- [x] Rejection/timeout: large high-contrast Pause warning on the request screen and on Home; best-effort beep; clear next step
+- [x] Wording: no reply ≠ fraud; approval ≠ safe recipient
+- [x] Failure tests: refresh, slow network, disconnected, closed family browser (= expiry), late response, duplicate click, sound blocked, wrong clock
+- [x] Accessibility: labels, focus ring + focus management, ≥ 48 px tap targets, contrast measured, status never colour-only
+- [x] Automated: lint, typecheck, 80/80 tests, build; `0005` re-runnable and anon-refused on PGlite
+- [x] User runs `0005_server_time.sql` on the hosted project — user, 2026-10-23
+- [x] Manual checklist (beep heard, keyboard only, zoom 200%, screen reader, wrong clock) — user, 2026-10-23
+
+### Phases 8–9
 See "Done when" in `PROMPTS.md`; checklists are added here when each phase starts.
