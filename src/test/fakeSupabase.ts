@@ -360,6 +360,14 @@ function createFake() {
     tables[table].push(row)
   }
 
+  /** Test helper: change a saved request and announce it through Realtime. */
+  function changeRequest(id: string, fields: Row) {
+    const row = tables.money_requests.find((r) => r.id === id)
+    if (!row) throw new Error(`no request ${id}`)
+    Object.assign(row, fields)
+    broadcast('UPDATE', row)
+  }
+
   /** Test helper: sign up, choose a role and (for family) redeem a code, in one go. */
   async function createPairedAccounts() {
     await supabase.auth.signUp({ email: 'elder1@example.com', password: 'demo-pass-1' })
@@ -386,6 +394,7 @@ function createFake() {
     serverNow,
     reset,
     insertRow,
+    changeRequest,
     createPairedAccounts,
     signInAs,
     setChannelStatus,

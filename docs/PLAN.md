@@ -14,8 +14,8 @@
 - [x] **Phase 5** — Create requests and deliver to the linked family member *(code + automated tests 2026-10-23; manual two-browser test passed, reported by the user 2026-10-23)*
 - [x] **Phase 6** — Approve/reject and real-time status updates *(code + automated tests 2026-10-23; 0004 applied and manual two-browser test passed, reported by the user 2026-10-23)*
 - [x] **Phase 7** — Timeout, warnings, accessibility, failure handling *(code + automated tests 2026-10-23; 0005 applied and manual checklist passed, reported by the user 2026-10-23)*
-- [ ] **Phase 8** — Tests, complete learning guide, demo script
-- [ ] **Phase 9** — Deployment and hackathon readiness
+- [ ] **Phase 8** — Tests, complete learning guide, demo script *(review, tests, guide and demo script done 2026-10-23; quiz pending; user to re-run Phase 7 checklist step 2 after the bug fix)*
+- [ ] **Phase 9** — Deployment and hackathon readiness *(docs, checks and disclosure done 2026-10-23; user to deploy and run the live checks)*
 
 ---
 
@@ -210,5 +210,27 @@ Sources (pages say "Last updated: 22 September 2026"):
 - [x] User runs `0005_server_time.sql` on the hosted project — user, 2026-10-23
 - [x] Manual checklist (beep heard, keyboard only, zoom 200%, screen reader, wrong clock) — user, 2026-10-23
 
-### Phases 8–9
-See "Done when" in `PROMPTS.md`; checklists are added here when each phase starts.
+### Phase 8
+- [x] Reviewed against every acceptance criterion in the project brief and this plan (BUILD_LOG Phase 8)
+- [x] Tests for validation, state transitions, amounts, authorization assumptions (what the browser sends), expiry; automated vs manual separated (README "What the tests cover")
+- [x] Lint, typecheck, 88/88 tests, production build: exact results in BUILD_LOG
+- [x] 375 px and desktop checked (signed-in screens via a temporary fake-backed preview); one bug fixed (Home alert after opening a request)
+- [x] Secret review: `.gitignore`, env files, bundle, Git history, SQL policies
+- [x] LEARNING_GUIDE complete (reading path in required order, file-by-file, glossary, diagrams, common errors, rebuild checklist, judge Q&A)
+- [x] DEMO_SCRIPT (90 s + 3 min, synthetic data, approval + rejection + timeout)
+- [x] README: setup, env vars, migrations, tests, limitations, prototype statement
+- [ ] Quiz attempted by the user, graded, saved to the guide — **pending**
+- [ ] User re-runs Phase 7 checklist step 2 — **pending**
+
+### Phase 9
+- [x] Current host docs checked; simplest route chosen (Netlify Drop; Vercel as alternative) — `docs/DEPLOY.md`
+- [x] Env-var handling explained; no secrets in chat, Git or the bundle
+- [x] Production build verified locally (`npm run build` + `npm run preview`)
+- [x] Exact manual tests from a real phone on mobile data written (`docs/DEPLOY.md`)
+- [x] RLS / policies / function rights check: `supabase/checks/deploy_checks.sql` (26 rows), verified on PGlite incl. deliberate breaks
+- [x] Supabase-unavailable behaviour: "Can't reach the server… don't pay" + Try again (automated tests; live check in DEPLOY.md)
+- [x] Backup demo plan without campus Wi-Fi, simulations clearly labelled
+- [x] Disclosure list: pre-event / onsite / third-party / AI (`docs/DISCLOSURE.md`), no invented format
+- [ ] User deploys and runs the live checks; live URL recorded only after that — **pending**
+- [ ] User runs `deploy_checks.sql` on the hosted project — **pending**
+- [ ] Teammate checks Devpost submission rules in a browser — **pending**

@@ -1,21 +1,27 @@
 # Flod — Learning Guide
 
-This guide grows after every phase. By the end it should let you rebuild Flod **from an empty folder without AI**. Read it in order; each section says which phase filled it in.
+This guide teaches you to rebuild Flod **from an empty folder without AI**. It was written phase by phase, so the detailed sections below are grouped by phase (the order things were built). **To learn a topic, follow the reading path:** it lists every topic in the order you need it, and where each part is.
 
-| # | Section | Status |
-|---|---|---|
-| 1 | Prerequisites and environment setup | ✅ Phase 1 |
-| 2 | JavaScript and TypeScript basics used by the app | 🟡 started Phase 1 (more in 2, 5) |
-| 3 | React components, props, state, events and forms | ✅ Phases 1–2 |
-| 4 | Request/domain types and state transitions | ✅ Phases 1–2 (database version in Phase 3) |
-| 5 | SQL schema, relations, constraints and migrations | ✅ Phase 3 |
-| 6 | Authentication, roles, pairing and authorization | 🟡 concepts + database side in Phase 3; app side Phase 4 |
-| 7 | Row Level Security and safe approval/rejection | 🟡 database side in Phase 3; app side Phase 6 |
-| 8 | Request lifecycle and database reads/writes | ⏳ Phase 5 |
-| 9 | Realtime subscriptions or polling and cleanup | ⏳ Phase 6 |
-| 10 | Timeout, visual/audio warnings and failure handling | 🟡 derived expiry + visual warning in Phase 2; rest Phase 7 |
-| 11 | Tests, debugging, deployment and environment variables | 🟡 tests started Phase 1; rest Phases 8–9 |
-| 12 | Diagrams, glossary, common errors, exercises, rebuild checklist, judge Q&A | 🟡 glossary started; completed Phase 8 |
+## Reading path (topic order)
+
+| # | Topic | Read these parts | Status |
+|---|---|---|---|
+| 1 | Prerequisites and environment setup | §1 (Phase 1); §11 "Environment variables" | ✅ |
+| 2 | JavaScript and TypeScript basics used by the app | §2 (Phase 1); Phase 4 "discriminated union / narrowing"; Phase 5 "Promises and async/await", "`{ data, error }`" | ✅ |
+| 3 | React components, props, state, events and forms | §3 (Phase 1); Phase 2 "New React concepts"; Phase 4 "Context", "Async event handlers"; Phase 6 `useCallback` | ✅ |
+| 4 | Request/domain types and state transitions | §4 (Phase 1); Phase 2 "Request states and transitions"; Phase 6 "never go backwards" | ✅ |
+| 5 | SQL schema, relations, constraints and migrations | Phase 3 §5; Phase 6 "publication" (`0004`); Phase 7 `0005` | ✅ |
+| 6 | Authentication, roles, pairing and authorization | Phase 3 §6–7; Phase 4 §6 (sessions, roles, pairing codes, sequence diagram) | ✅ |
+| 7 | Row Level Security and safe approval/rejection | Phase 3 §6–7 (policies, functions); Phase 6 §7 (conditional update, confirmed UI) | ✅ |
+| 8 | Request lifecycle and database reads/writes | Phase 2 data-flow walkthrough (mock); Phase 5 §8 (real) | ✅ |
+| 9 | Realtime subscriptions or polling and cleanup | Phase 6 §9 | ✅ |
+| 10 | Timeout, visual/audio warnings and failure handling | Phase 7 §10 + failure-mode table | ✅ |
+| 11 | Tests, debugging, deployment and environment variables | §11 "Tests and scripts" (Phase 1); **§11 (complete)** near the end | ✅ (hosting itself: Phase 9) |
+| 12 | Diagrams, glossary, common errors, exercises, rebuild checklist, judge Q&A | **§12** near the end; each phase's exercises and self-test | ✅ |
+
+Every major file is explained (what, why, inputs/outputs, important parts, common mistakes, practice task) in the "file-by-file" table of the phase that created it. **Appendix: file index** near the end says which table to look in.
+
+A longer, chapter-by-chapter book about the same design is in `Learning/` (it calls the product "Notme"; not part of the Git repo).
 
 ---
 
@@ -27,7 +33,7 @@ Flod has one job: before an elder pays an urgent request, a family member **they
 |---|---|---|
 | `pending` | Waiting for the family member | Wait. Don't pay yet. |
 | `approved` | Family member confirmed these exact details | Proceed carefully. Approval doesn't prove the recipient is safe. |
-| `rejected` | Family member says they didn't ask for this | Don't pay. Call them on a known number. |
+| `rejected` | Family member says this request is not genuine | Don't pay. Call them on a known number. |
 | `expired` | No answer before the deadline | **Unconfirmed** (not proven fraud). Don't pay until you reach them. |
 
 ---
@@ -217,7 +223,7 @@ const [view, setView] = useState<View>({ name: 'elderHome' })
 | `npm test` | `vitest run` | Runs all `*.test.ts(x)` files once |
 | `npm run build` | `tsc -b && vite build` | Typecheck, then build `dist/` |
 
-**How a component test works** (`src/App.test.tsx`):
+**How a component test works** (Phase 1 example; the Family switch it clicks was removed in Phase 4, and today's tests are described in "§11 (complete)" near the end):
 ```tsx
 render(<App />)                                               // draw it in a fake browser (jsdom)
 fireEvent.click(screen.getByRole('button', { name: 'Family' }))  // act like a user
@@ -1154,6 +1160,183 @@ Asha sends ₹5,000 at 17:30:00 (database time); her phone's clock says 17:28:00
 6. Name three things that make the Pause warning accessible without sound or colour.
 7. Why does Flod move focus after the family member answers?
 8. Why is a hidden button "kindness, not security"?
+
+---
+
+# Phase 8 — Testing, debugging and the whole picture
+
+## 11. Tests, debugging, deployment and environment variables (complete)
+
+### What each kind of check proves, and what it can't
+| Check | Files | Proves | Can't prove |
+|---|---|---|---|
+| Unit tests (pure functions) | `lib/validation`, `lib/requestStatus`, `lib/requestList`, `lib/format`, `lib/alertSound`, `mock/mockStore` `.test.ts` | Rules give the right answer for each input (amounts, expiry, merge order, beep never throws) | How screens use them |
+| Component tests | `components/{StatusBadge,StatusBanner,RequestForm,FamilyResponse}.test.tsx` | One piece draws the right words and reacts to clicks (busy state, double tap, focus) | Anything about the server |
+| Flow tests against the **fake** Supabase | `App.test.tsx`, `SignedInApp.test.tsx`, `hooks/useRequestUpdates.test.tsx` | The React code reacts correctly to every answer the backend can give: sign-in, pairing, create, deliver, answer, live/polling/offline, wrong clock | That the **real** backend gives those answers |
+| API contract tests | `lib/api/api.test.ts` | The browser sends only what the person chose (never ids, status or times) and shows refusals honestly | That the database refuses tampered calls |
+| Database security checks | `supabase/checks/rls_checks.sql` (run in Supabase's SQL Editor) | 36 allowed/forbidden actions **on the real database**, including a stranger and a second elder | Anything in the browser |
+| Manual checklists | README "Manual test" sections for Phases 4–7 | Two real browsers, real network, real sound, keyboard, zoom, screen reader | Repeatability (a person has to do it) |
+
+At the end of Phase 8: **87 automated tests in 14 files**, all passing; `rls_checks.sql` 36/36 PASS on the hosted project; every manual checklist reported passed by the user.
+
+### Test doubles
+- **Fake:** a working stand-in with simplified insides (`src/test/fakeSupabase.ts`: tables in memory, the same rules and messages as the SQL functions, Realtime delivery that respects "who may read this row").
+- **Mock / spy:** a function that records how it was called (`vi.fn()`), e.g. the beep in `SignedInApp.test.tsx`, so a test can check *when* the app tries to beep.
+- **Stub:** replace a global for one test (`vi.stubGlobal('AudioContext', …)`).
+
+### "Break it on purpose" (mutation checks)
+A test that can't fail proves nothing. During the build each important rule was broken on purpose to see its test fail: pairing not calling `onLinked`, `upsert(created)` removed, no polling after a failed check, no `removeChannel`, raw phone clock instead of server time, old warnings not filtered, RLS turned off (in `rls_checks.sql`). Every one made the right test fail. Do the same whenever you add a rule.
+
+### A debugging method (use it before asking anyone)
+1. **Reproduce** it: write down exact steps, and the exact message.
+2. **Read** the message fully: which file, which line, which value?
+3. **Look** in the right place: browser **Console** (red errors), **Network** tab (the request, its body and its response), Supabase **Table Editor** (what's really saved), the test's printed HTML.
+4. **Guess one cause**, change **one** thing, check again.
+5. **Write a test** that would have caught it, then fix it so the test passes.
+
+### Common errors (real ones from building Flod)
+| You see | Likely cause | Fix |
+|---|---|---|
+| Blank page; console: "Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY" | `.env.local` missing or misspelt | Copy `.env.example` to `.env.local`, fill both values, **restart** `npm run dev` |
+| Blank page; console: "does not provide an export named …" for a file that does export it | Vite kept an old copy of a module while you were editing | Stop and restart the dev server |
+| "permission denied for table …" (code 42501) | Request made while signed out (anon has no rights) | Sign in first; this is RLS working |
+| Sign-in says "Email or password is not right" for an account you just made | "Confirm email" still on in Supabase (the real error is "Email not confirmed") | Turn it off (README step 2), or confirm the email |
+| "Could not find the function public.server_now" (only visible in the Network tab) | `0005_server_time.sql` not run | Run it. The app still works meanwhile, with the phone's clock |
+| "Live updates are not connected…" notice that never goes away | `0004_realtime.sql` not run, or Realtime off for the table | Run `0004`; check Database → Publications |
+| "This request has already been answered." | A second answer (another tab or device) | Expected: the database refuses it; the screen corrects itself |
+| "That code is not valid…" | Typo, or the elder made a newer code (older ones are deleted) | Use the code currently on the elder's screen |
+| A test: "Unable to find an accessible element with the role …" | The element isn't there **yet** (still loading) or has a different role/name | Use `findBy…` to wait; read the HTML the test prints |
+| A test that fails only sometimes | Timing: checking a state that lasts only milliseconds | Record every state (see Phase 6 bug 3) or wait for the final one |
+
+### Environment variables
+- Vite only exposes variables whose names start with **`VITE_`**, and it **copies them into the browser code** at build time. Anything `VITE_…` is public.
+- Flod needs exactly two: `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` (both designed to be public; RLS protects the data).
+- `.env.local` holds them on your machine and is ignored by Git (`.gitignore`: `.env`, `.env.*`, except `.env.example`).
+- **Never** put the `secret` / `service_role` key anywhere in this project: it skips every RLS rule.
+- After changing `.env.local`, restart the dev server (it reads the file only at start).
+
+### Deployment, in principle (Phase 9 does it for real)
+`npm run build` makes `dist/`: plain HTML, CSS and JavaScript. Any static host can serve it. On the host you set the **same two `VITE_` variables** in its dashboard (never in Git), and it runs `npm run build`. Supabase stays where it is; the deployed app talks to it exactly like your laptop does. Free Supabase projects pause when unused, so open the project the day before a demo.
+
+### Security model and honest limitations
+**What protects the data:** Supabase Auth (who you are) → RLS SELECT policies (what you may read) → five narrow `security definer` functions (the only ways to write), each checking `auth.uid()` and refusing late, duplicate or wrong-person actions → Realtime delivering changes only to people who may read the row.
+
+**What Flod does not protect against** (all stated in the README too): a compromised family-member account; a family member who confirms by mistake; pairing-code guessing (no rate limit; 32⁸ codes, 10-minute life); open sign-up with unverified emails (demo only); a wrong recipient that the family member approves anyway ("confirmed" ≠ "safe"); anything while the app is closed (no push/SMS); no unlink flow; no audit log, monitoring or abuse protection.
+
+## 12. The whole picture
+
+### Architecture
+```mermaid
+flowchart LR
+  subgraph Elder["Asha's phone (elder)"]
+    EA[React app<br/>SignIn · Pair · Create · Home · Detail]
+  end
+  subgraph Family["Ravi's phone (family)"]
+    FA[React app<br/>SignIn · Pair · Inbox · Detail]
+  end
+  subgraph Supabase
+    AUTH[Auth<br/>email + password → session]
+    DB[(Postgres<br/>profiles · family_links<br/>pairing_codes · money_requests)]
+    RLS{{RLS SELECT policies}}
+    FN[[5 write functions + server_now]]
+    RT[Realtime<br/>publication supabase_realtime]
+  end
+  EA -->|"sign in"| AUTH
+  FA -->|"sign in"| AUTH
+  EA -->|"rpc create_pairing_code, create_money_request"| FN
+  FA -->|"rpc redeem_pairing_code, respond_to_request"| FN
+  FN --> DB
+  EA -->|"select (reads)"| RLS
+  FA -->|"select (reads)"| RLS
+  RLS --> DB
+  DB -->|"row changes"| RT
+  RT -->|"only rows you may read"| EA
+  RT -->|"only rows you may read"| FA
+```
+
+### Data flow: one request from start to finish
+```mermaid
+sequenceDiagram
+  participant A as Asha (elder)
+  participant DB as Supabase (functions + RLS)
+  participant RT as Realtime
+  participant R as Ravi (family)
+  A->>DB: rpc create_money_request(2500, 'shop@demo-upi', note, 60)
+  DB->>DB: who? Asha (auth.uid). linked to? Ravi. status pending, expires now()+60s
+  DB-->>A: the new row → "Waiting for Ravi… Do not pay yet." + countdown
+  DB->>RT: INSERT
+  RT-->>R: row (Ravi may read it) → inbox "Waiting for your answer"
+  R->>DB: rpc respond_to_request(id, 'rejected')
+  DB->>DB: mine? pending? before expires_at? → update 1 row
+  DB-->>R: saved row → "You rejected this request…"
+  DB->>RT: UPDATE
+  RT-->>A: row → "Pause. This request has not been confirmed…" + beep (if allowed)
+  Note over A,R: No answer by expires_at → both screens show "Unconfirmed"; late answers are refused
+```
+
+### Rebuild-from-scratch checklist (without AI)
+Tick each line only when its "done when" is true. Each step names the part of this guide to read.
+
+1. **Tools** (§1): Node LTS, Git, VS Code installed. *Done when* `node --version` and `git --version` print versions.
+2. **Scaffold** (§1, Phase 1): `npm create vite@latest` (React + TypeScript), add Vitest + Testing Library + jsdom, scripts `lint`/`typecheck`/`test`. *Done when* all three scripts pass on the empty app.
+3. **Types** (§4): `UserRole`, `RequestStatus` (4 states), `StoredStatus` (3), `MoneyRequest`, `NewRequestInput`. *Done when* you can explain why `expired` is never stored.
+4. **Pure rules** (Phase 2): `validation.ts` (amount 1–1,00,000 whole rupees, recipient 3–100, note ≤ 200) and `requestStatus.ts` (`getEffectiveStatus`). *Done when* their tests pass, including "expired exactly at the deadline".
+5. **Screens with mock data** (Phase 2): Layout, ElderHome, CreateRequest + RequestForm, FamilyInbox, RequestDetail, StatusBadge, StatusBanner, WarningPanel, FamilyResponse, AboutSafety. *Done when* the whole flow works in one tab and the warning wording matches the rules.
+6. **Supabase project** (README): create it, turn off "Confirm email". *Done when* you can open the SQL Editor.
+7. **Tables** (§5, `0001`): four tables with keys, `check` constraints and `on delete cascade`. *Done when* it runs twice without errors.
+8. **RLS** (§6–7, `0002`): enable RLS, revoke all, grant SELECT to `authenticated`, five policies. *Done when* you can say each policy in one sentence.
+9. **Write functions** (`0003`): `create_my_profile`, `create_pairing_code`, `redeem_pairing_code`, `create_money_request`, `respond_to_request`, all `security definer` + `search_path = ''` + revoke anon. *Done when* you can explain the conditional update.
+10. **Prove it** (`rls_checks.sql`): *Done when* 36/36 PASS, and you have broken one rule on purpose and seen a FAIL.
+11. **Client** (Phase 4): `supabaseClient.ts`, `.env.local`, `api/errors.ts`, `api/profile.ts`, `api/pairing.ts`. *Done when* the app starts with no "Missing VITE_…" error.
+12. **Auth + gate** (Phase 4): `AuthProvider` (session listener, profile + link load with `loadKey`), `App.tsx` gate, SignIn, ChooseRole, PairElder, PairFamily. *Done when* two browsers link with a code and a third account can't reuse it.
+13. **Requests** (Phase 5): `api/requests.ts` (create, list), `useMyRequests` (loading/error/upsert), async RequestForm. *Done when* a request made in one browser appears in the other after Refresh and survives reload.
+14. **Answers + live** (Phase 6): `respondToRequest`, async FamilyResponse, `0004_realtime.sql`, `useRequestUpdates` (channel, polling fallback, offline, clean-up), `requestList.ts`, ConnectionNotice. *Done when* an answer appears on the other screen without Refresh, and the polling notice appears when Realtime is off.
+15. **Time + warnings** (Phase 7): `0005_server_time.sql`, `serverTime.ts`, `useServerOffset`, `TimeLeft`, `alertSound.ts`, `useNewWarnings`, Home Pause alert, focus management. *Done when* a timeout shows the Pause alert on Home and beeps once, and keyboard-only use works.
+16. **Tests** (§11): fake Supabase, flow tests, API contract tests. *Done when* lint, typecheck, tests and build all pass and a deliberate break makes a test fail.
+17. **Docs + demo**: README (setup, env vars, migrations, tests, limitations), `docs/DEMO_SCRIPT.md`. *Done when* a teammate can set it up from the README alone.
+
+### Explain it to a judge
+Practise saying these out loud in 20–30 seconds each.
+
+| Question | The answer you should be able to give |
+|---|---|
+| Why not detect fake voices? | Detection is an arms race and a wrong "it's real" is dangerous. We don't judge the voice; we **verify the exact request** with a person the elder trusts, on a separate channel they set up earlier. It works however good the fake is. |
+| How do you know the family member is really the family member? | They were linked **in person, before any emergency**, with a single-use 10-minute code shown on the elder's screen. The browser never sends user ids; the database creates the link. A caller can't link themselves without being physically there (or tricking the elder into reading the code out, which the screen warns against). |
+| How are the amount and recipient bound to the confirmation? | The family member answers one **specific request row**. Its amount and recipient can't be changed after creation (no update path for them), and the answer function only changes `status` and `responded_at`. |
+| What stops someone else approving? | Row Level Security: only the elder and the linked family member can even read the row. `respond_to_request` checks `family_id = auth.uid()`, `status = 'pending'` and `expires_at > now()` in one update. Our 36 database checks include a stranger and a second elder. |
+| What if the relative doesn't answer? | After the deadline the request shows as **Unconfirmed** with a Pause warning: "no reply is not proof of a scam… don't pay until you've spoken to them". The database refuses late answers. |
+| What if the network fails? | Live updates fall back to polling every 4 s; if even that fails the elder sees "Can't reach the server… don't pay". Sending failures say so and keep the form. Nothing is ever shown as confirmed unless the server saved it. |
+| What if the family account is compromised? | Out of scope, and we say so. Approval confirms the *details* with the linked account; it can't prove the person behind it. |
+| Is sound reliable? | No, so we don't rely on it. Browsers block sound until a tap; phones get muted. The visual warning is complete on its own; the beep is a bonus. |
+| What data do you store? | An email (for sign-in), a display name, the link, and each request's amount, recipient text and optional note. All demo data is made up. No contacts, no call access, no real payments. |
+| What's actually built vs future work? | Built: accounts, in-person pairing, create/deliver/answer, live updates + polling, timeout, warnings, server-clock correction, tests. Future: unlink/change family member, several family members, push/SMS when the app is closed, rate limiting on codes, audit log. |
+| How was AI used? | (Answer honestly from `docs/BUILD_LOG.md`: code, tests and docs were generated with the AI assistant under our direction, and we reviewed and tested them; see the disclosure in Phase 9.) |
+
+### Appendix: file index (where each file is explained)
+| File | Explained in |
+|---|---|
+| `src/main.tsx`, `App.tsx` (gate) | Phase 1; Phase 4 file-by-file |
+| `src/SignedInApp.tsx` | Phases 4, 5, 6, 7 file-by-file |
+| `src/types/domain.ts`, `types/view.ts`, `config.ts` | Phase 1; Phase 2; Phase 7 |
+| `src/lib/validation.ts`, `requestStatus.ts`, `format.ts` | Phase 2 file-by-file |
+| `src/lib/requestList.ts` | Phase 6 file-by-file |
+| `src/lib/alertSound.ts` | Phase 7 file-by-file |
+| `src/lib/supabaseClient.ts`, `lib/api/{errors,profile,pairing}.ts` | Phase 4 file-by-file |
+| `src/lib/api/requests.ts` | Phases 5–6 file-by-file |
+| `src/lib/api/serverTime.ts` | Phase 7 file-by-file |
+| `src/auth/{authContext.ts,AuthProvider.tsx}` | Phase 4 file-by-file |
+| `src/hooks/useNow.ts` | Phase 2 |
+| `src/hooks/useCountdown.ts` | Phase 4 file-by-file |
+| `src/hooks/useMyRequests.ts` | Phases 5–6 file-by-file |
+| `src/hooks/useRequestUpdates.ts` | Phase 6 file-by-file |
+| `src/hooks/{useServerOffset,useNewWarnings}.ts` | Phase 7 file-by-file |
+| `src/components/*` | Phases 1–2; ConnectionNotice Phase 6; TimeLeft Phase 7 |
+| `src/pages/*` | Phases 1–2; SignIn/ChooseRole/PairElder/PairFamily Phase 4 |
+| `src/mock/*` | Phase 2 (kept for learning; unused by the app since Phase 5) |
+| `src/test/fakeSupabase.ts`, `lib/api/api.test.ts` | Phase 4 file-by-file; §11 (complete) |
+| `supabase/migrations/0001–0003`, `checks/rls_checks.sql` | Phase 3 file-by-file |
+| `supabase/migrations/0004_realtime.sql` | Phase 6 file-by-file |
+| `supabase/migrations/0005_server_time.sql` | Phase 7 file-by-file |
 
 ---
 

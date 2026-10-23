@@ -25,13 +25,16 @@ export function useNewWarnings(
 ) {
   // When this screen opened, by the phone's clock. Calculated once.
   const [openedAtMs] = useState(() => Date.now())
-  const [seenIds, setSeenIds] = useState<string[]>([])
+  // When the elder last looked at each request (phone clock). Opening a request
+  // BEFORE it turned into a warning must not hide that warning later.
+  const [seenAt, setSeenAt] = useState<Record<string, number>>({})
 
   const newWarnings = enabled
     ? requests.filter((r) => {
         const moment = warningMoment(r, serverNowMs)
-        // Convert the server-time moment to phone time before comparing.
-        return moment !== null && moment - serverOffsetMs >= openedAtMs && !seenIds.includes(r.id)
+        if (moment === null) return false
+        const momentOnPhone = moment - serverOffsetMs // server time → phone time
+        return momentOnPhone >= openedAtMs && momentOnPhone > (seenAt[r.id] ?? -Infinity)
       })
     : []
 
@@ -46,8 +49,8 @@ export function useNewWarnings(
     playAlertSound()
   }, [newIds])
 
-  /** Call when the elder opens or leaves a request, so it stops being "new". */
-  const markSeen = (id: string) => setSeenIds((ids) => (ids.includes(id) ? ids : [...ids, id]))
+  /** Call when the elder opens or leaves a request: anything that happened before now is "seen". */
+  const markSeen = (id: string) => setSeenAt((seen) => ({ ...seen, [id]: Date.now() }))
 
   return { newWarnings, markSeen }
 }

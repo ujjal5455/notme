@@ -6,7 +6,7 @@
 
 ## Current status
 
-Phase 6 of 9. **The core flow works end to end** on two devices: accounts and in-person pairing (Phase 4); the elder's request is saved in Supabase and appears in the linked family member's inbox (Phase 5); the family member **confirms or rejects**, and the elder's screen **updates by itself** through Supabase Realtime, with polling every 4 seconds as the fallback (Phase 6). Phase 7 adds a countdown corrected to the **database's clock**, a large **Pause** alert on the elder's home screen when a request is rejected or runs out of time, a **best-effort beep** (the visual warning never depends on it), focus handling for keyboard and screen-reader users, and failure tests. Requires `0004_realtime.sql` and `0005_server_time.sql` to be run on your project. See [`docs/PLAN.md`](docs/PLAN.md) for progress and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md) for what was done and tested.
+Phase 6 of 9. **The core flow works end to end** on two devices: accounts and in-person pairing (Phase 4); the elder's request is saved in Supabase and appears in the linked family member's inbox (Phase 5); the family member **confirms or rejects**, and the elder's screen **updates by itself** through Supabase Realtime, with polling every 4 seconds as the fallback (Phase 6). Phase 7 adds a countdown corrected to the **database's clock**, a large **Pause** alert on the elder's home screen when a request is rejected or runs out of time, a **best-effort beep** (the visual warning never depends on it), focus handling for keyboard and screen-reader users, and failure tests. Requires `0004_realtime.sql` and `0005_server_time.sql` to be run on your project. Phase 8 reviewed everything against the brief, added tests (88 automated) and wrote [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md); [`docs/LEARNING_GUIDE.md`](docs/LEARNING_GUIDE.md) now covers rebuilding Flod from an empty folder. Phase 9 (deployment readiness): [`docs/DEPLOY.md`](docs/DEPLOY.md) explains how to put it online (Netlify Drop recommended), how to test it from a phone on mobile data, a backup plan and a final checklist; [`docs/DISCLOSURE.md`](docs/DISCLOSURE.md) separates pre-event work, third-party software and AI assistance. **Not yet deployed**: no live URL has been checked, so none is listed here. See [`docs/PLAN.md`](docs/PLAN.md) for progress and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md) for what was done and tested.
 
 ## Run it locally
 
@@ -68,7 +68,7 @@ First run `supabase/migrations/0004_realtime.sql` in the SQL Editor (Database se
 First run `supabase/migrations/0005_server_time.sql` in the SQL Editor. Windows A (Asha) and B (Ravi) side by side, sound on (volume low).
 
 1. **Countdown:** A sends ₹2,500. Both detail screens show a countdown ("Time left for Ravi (demo) to answer: 0:59" / "Time left to answer: 0:59") that ticks down.
-2. **Timeout + beep:** A goes back to **Home** and waits. At 0:00 a large **Pause** alert appears at the top of Home ("Your ₹2,500 request has not been confirmed. Do not pay…") and you should hear **two short beeps**. In B the buttons are replaced by "This request expired before it was answered…".
+2. **Timeout + beep:** A goes back to **Home** and waits. *(Fixed in Phase 8: before that fix, a request you had opened, as happens right after sending, did not raise the Home alert when it later timed out. Re-run this step if you tested before Phase 8.)* At 0:00 a large **Pause** alert appears at the top of Home ("Your ₹2,500 request has not been confirmed. Do not pay…") and you should hear **two short beeps**. In B the buttons are replaced by "This request expired before it was answered…".
 3. **Rejection + beep on any screen:** send another request; B rejects it while A is on Home → Pause alert + beeps on A. Tap **Open the ₹2,500 request** → full warning; **Back** → the Home alert is gone.
 4. **Sound blocked:** mute the computer (or the tab) and repeat step 3 → the visual warning is exactly the same; nothing important is lost.
 5. **Old warnings aren't repeated:** reload A → no new alert or beep for those old requests; their cards still say "Rejected by family" / "Unconfirmed — no reply".
@@ -88,6 +88,14 @@ First run `supabase/migrations/0005_server_time.sql` in the SQL Editor. Windows 
 | `npm run test:watch` | Re-run tests whenever a file changes |
 | `npm run build` | Typecheck, then build production files into `dist/` |
 
+### What the tests cover
+
+- **Automated (no Supabase needed):** `npm test` runs 88 tests in 14 files: validation and status rules, components, the whole app flow (sign-in, pairing, create, deliver, answer, live/polling/offline, wrong clock, warnings) against an in-memory fake Supabase (`src/test/fakeSupabase.ts`), and what the browser sends to the database (`src/lib/api/api.test.ts`).
+- **Database security (needs your Supabase project):** `supabase/checks/rls_checks.sql` in the SQL Editor: 36 checks.
+- **Manual (two real browsers):** the "Manual test" checklists above for Phases 4–7.
+
+The fake proves the React code reacts correctly to each answer; only `rls_checks.sql` and the manual tests prove the real backend gives those answers.
+
 ## Database setup (Supabase)
 
 The database lives in a free [Supabase](https://supabase.com) project. Everything it needs is in this repo:
@@ -100,6 +108,7 @@ The database lives in a free [Supabase](https://supabase.com) project. Everythin
 | `supabase/migrations/0004_realtime.sql` | Turns on live updates (Supabase Realtime) for `money_requests` |
 | `supabase/migrations/0005_server_time.sql` | `server_now()`: lets the app correct countdowns for a phone with a wrong clock |
 | `supabase/checks/rls_checks.sql` | 36 automatic security checks; prints PASS/FAIL per check |
+| `supabase/checks/deploy_checks.sql` | Read-only settings check before a demo (RLS on, no anon access, read-only tables, function rights, Realtime): 26 × PASS |
 
 ### Step by step
 
@@ -144,4 +153,8 @@ With Docker Desktop running, `npx supabase init` then `npx supabase start` start
 
 ## Learning
 
-[`docs/LEARNING_GUIDE.md`](docs/LEARNING_GUIDE.md) teaches how to rebuild this app from an empty folder, one phase at a time.
+[`docs/LEARNING_GUIDE.md`](docs/LEARNING_GUIDE.md) teaches how to rebuild this app from an empty folder: a reading path in topic order, every major file explained, diagrams, common errors, a rebuild checklist and judge Q&A. [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) has 90-second and 3-minute demo walkthroughs.
+
+## This is a prototype
+
+Flod is a hackathon prototype built with made-up data. It never moves real money, does not listen to or block phone calls, and is **not** an emergency service or a payment-safety guarantee. A confirmation means the linked family member agreed with the request's details, nothing more.

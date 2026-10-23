@@ -1,7 +1,7 @@
 export function AboutSafety() {
   return (
     <section aria-labelledby="about-title">
-      <h1 id="about-title">How Flod keeps you safe</h1>
+      <h1 id="about-title">How Flod helps you check before you pay</h1>
       <p>
         Scammers can copy a family member&apos;s voice and ask you for money urgently. Flod does
         not try to detect fake voices. Instead, it lets you check the exact request with your
@@ -15,7 +15,8 @@ export function AboutSafety() {
           not prove the person you are paying is safe.
         </li>
         <li>
-          <strong>Rejected:</strong> your family member did not make this request. Do not pay.
+          <strong>Rejected:</strong> your family member says this request is not genuine. Do not
+          pay unless you speak to them directly and they say it is.
         </li>
         <li>
           <strong>No reply:</strong> the request is unconfirmed. That does not prove it is a scam,

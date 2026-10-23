@@ -246,9 +246,10 @@ describe('SignedInApp (Phase 7: time, warnings and failures)', () => {
     await savedRequest() // the database gives Ravi 60 seconds
     await renderAsFamily()
     click(/₹2,500/)
-    // Without the correction this would say 6:00.
-    await waitFor(() =>
-      expect(document.querySelector('.time-left')).toHaveTextContent(/time left to answer: (1:00|0:59)$/i),
+    // About 1 minute (1:00 or 0:xx on a slow test machine). Without the correction: about 6:00.
+    await waitFor(
+      () => expect(document.querySelector('.time-left')).toHaveTextContent(/time left to answer: (1:00|0:[0-5]\d)$/i),
+      { timeout: 3000 },
     )
   })
 
@@ -283,12 +284,28 @@ describe('SignedInApp (Phase 7: time, warnings and failures)', () => {
   })
 
   it('a request nobody answers turns into a warning on the home screen by itself', async () => {
-    insertRequest({ expires_at: new Date(fake.serverNow() + 1500).toISOString() })
+    // 3 s, so a slow test machine can't miss the "no alert yet" moment.
+    insertRequest({ expires_at: new Date(fake.serverNow() + 3000).toISOString() })
     await renderAsElder()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    const alert = await screen.findByRole('alert', {}, { timeout: 4000 })
+    const alert = await screen.findByRole('alert', {}, { timeout: 6000 })
     expect(alert).toHaveTextContent(/your ₹5,000 request has not been confirmed/i)
     expect(playAlertSound).toHaveBeenCalledTimes(1)
+  })
+
+  it('a request Asha sent and left still alerts on Home when it later times out', async () => {
+    await renderAsElder()
+    fillAndSend() // opens the new request's screen…
+    await screen.findByRole('heading', { level: 1, name: '₹2,500' })
+    click('Back') // …and she goes back Home before anything happened
+    await screen.findByRole('button', { name: /₹2,500/ })
+    const { data } = await fake.supabase.from('money_requests').select()
+    const id = String((data as { id: string }[])[0].id)
+    // Make its deadline 1.5 s away (as if 58.5 of its 60 s had passed).
+    fake.changeRequest(id, { expires_at: new Date(fake.serverNow() + 1500).toISOString() })
+    const alert = await screen.findByRole('alert', {}, { timeout: 4000 })
+    expect(alert).toHaveTextContent(/your ₹2,500 request has not been confirmed/i)
+    expect(document.querySelector('.request-card')).toHaveTextContent(/unconfirmed — no reply/i)
   })
 
   it('does not announce old warnings from before the app was opened', async () => {
