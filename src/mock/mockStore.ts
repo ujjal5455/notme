@@ -1,4 +1,7 @@
 // LOCAL-ONLY "database" rules for Phase 2.
+// Since Phase 5 the app no longer uses this file: requests are created by the
+// create_money_request database function (src/lib/api/requests.ts). It is kept,
+// with its tests, as the simple version to learn from and compare with the SQL.
 //
 // These are pure functions: they take the current list of requests and return
 // a NEW list (they never change the old one). App.tsx keeps the list in React

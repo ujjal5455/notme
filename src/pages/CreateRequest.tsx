@@ -3,7 +3,7 @@ import type { NewRequestInput, Profile } from '../types/domain'
 
 interface CreateRequestProps {
   familyMember: Profile | undefined
-  onSubmit: (input: NewRequestInput) => void
+  onSubmit: (input: NewRequestInput) => Promise<void>
   onCancel: () => void
 }
 

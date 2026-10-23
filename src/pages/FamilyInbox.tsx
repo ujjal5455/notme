@@ -8,6 +8,7 @@ interface FamilyInboxProps {
   requests: MoneyRequest[]
   nowMs: number
   onOpenRequest: (requestId: string) => void
+  onRefresh: () => void
 }
 
 export function FamilyInbox({
@@ -16,6 +17,7 @@ export function FamilyInbox({
   requests,
   nowMs,
   onOpenRequest,
+  onRefresh,
 }: FamilyInboxProps) {
   const waiting = requests.filter((request) => canBeAnswered(request, nowMs))
   const earlier = requests.filter((request) => !canBeAnswered(request, nowMs))
@@ -28,6 +30,10 @@ export function FamilyInbox({
         <strong>{linkedElder.displayName}</strong>. Only requests from your linked family member
         appear here.
       </p>
+
+      <button type="button" className="button-secondary" onClick={onRefresh}>
+        Check for new requests
+      </button>
 
       <h2>Waiting for your answer</h2>
       {waiting.length === 0 ? (

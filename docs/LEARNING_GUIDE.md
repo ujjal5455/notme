@@ -844,6 +844,103 @@ If the code was wrong, step 3 raises *"That code is not valid. Check it and try 
 
 ---
 
+# Phase 5 — Requests saved in the database and delivered to the linked family member
+
+What changed: creating a request now calls the database, and both people's screens load their requests from Supabase. Confirm/Reject and live updates are Phase 6.
+
+## 8. Request lifecycle and database reads/writes
+
+### Promises and async/await, in one minute
+Talking to a server takes time, so `supabase.rpc(...)` gives back a **Promise**: a box that will later hold either the answer or an error. `await` pauses *this function* (not the whole page) until the box is filled.
+```ts
+async function handleCreate(input: NewRequestInput) {
+  const created = await createMoneyRequest(input, 60) // waits ~0.3 s for the database
+  upsert(created)                                    // runs only after the answer arrived
+  openRequest(created.id)
+}
+```
+*Analogy:* ordering at a counter and getting a buzzer. You don't stand frozen at the counter; when the buzzer goes off (`await` finishes), you collect your order. If the kitchen is out of it, the buzzer tells you that instead (an error you `catch`).
+
+### `{ data, error }`: supabase-js never throws for a refused request
+Every call returns an object with **both** fields; exactly one is useful. Our API files check `error` every time and turn it into a thrown `Error` with a friendly message, so screens can use one `try/catch`:
+```ts
+const { data, error } = await supabase.rpc('create_money_request', { p_amount_inr: 2500, … })
+if (error) throw new Error(friendlyMessage(error.message))
+return toMoneyRequest(data)
+```
+
+### Writes through a function, reads through a query
+| | Write: create a request | Read: list my requests |
+|---|---|---|
+| Code | `supabase.rpc('create_money_request', {...})` | `supabase.from('money_requests').select('*').order('created_at', { ascending: false })` |
+| SQL it runs | the function in `0003_functions.sql` | `select * from money_requests order by created_at desc` |
+| Who decides what's allowed | the function's own checks (`auth.uid()`, role, link) | RLS policy "read if elder or assigned family" |
+| What the browser sends | amount, recipient, note, timeout only | nothing except the token |
+
+### Two validation boundaries
+- **In the browser** (`src/lib/validation.ts`): quick, friendly messages ("whole rupees and numbers only") before anything is sent. This is for **kindness**.
+- **In the database** (`create_money_request`): the same limits again, plus "are you an elder?" and "are you linked?". This is for **security**, because anyone can skip the browser and call the API directly.
+
+### Loading, empty, error: every screen that talks to a server has more than one state
+`useMyRequests` starts with `loading = true`, so the first screen says *Loading your requests…* and never a misleading "You have not sent any requests yet". If a later refresh fails, the **old list stays** and a warning says it may be out of date, with **Try again**. Never show something that might be wrong as if it were right.
+
+### Upsert: change one item without reloading everything
+```ts
+const upsert = (changed: MoneyRequest) =>
+  setRequests((previous) =>
+    [changed, ...previous.filter((r) => r.id !== changed.id)]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)), // newest first
+  )
+```
+"Up**date** or in**sert**": remove any old copy, add the new one, keep the order. ISO date strings sort in time order, so comparing the text sorts by time.
+
+### Delivery without live updates (yet)
+The family member's list is loaded when the screen opens, when they tap **Check for new requests**, and when they come back to the tab (`visibilitychange`). Phase 6 adds Supabase Realtime so it appears by itself.
+
+## Tracing one request from form to database row to inbox
+Asha types `2500`, ` test.shop@demo-upi ` (with spaces), note `Caller said it is urgent`, and taps **Send to family to confirm**:
+1. `RequestForm.handleSubmit` → `validateRequestForm` → `{ amountInr: 2500, recipient: 'test.shop@demo-upi', note: 'Caller said it is urgent' }`. Button becomes *Sending…* (disabled).
+2. `SignedInApp.handleCreate` → `createMoneyRequest(input, 60)` in `src/lib/api/requests.ts` → `supabase.rpc('create_money_request', { p_amount_inr: 2500, p_recipient: …, p_note: …, p_timeout_seconds: 60 })`, with Asha's token attached.
+3. Postgres: `auth.uid()` = Asha; role `elder` ✓; `family_id` looked up in `family_links` = Ravi; amount 1–100000 ✓; recipient trimmed, 3–100 chars ✓; timeout clamped to 15–600 → 60; `insert … status 'pending', created_at now(), expires_at now() + 60 s`; the new row is returned.
+4. Back in the browser: `toMoneyRequest` turns `amount_inr` into `amountInr`, etc.; `upsert(created)` puts it at the top of Asha's list; `openRequest` shows *Waiting for Ravi (demo) to confirm. Do not pay yet.*
+5. Ravi taps **Check for new requests** → `listMyRequests()` → `select * from money_requests` with Ravi's token → RLS returns only rows where `family_id` = Ravi → the ₹2,500 card appears under *Waiting for your answer*.
+
+If Asha's internet drops at step 2, `supabase-js` returns an error containing "Failed to fetch"; `friendlyMessage` turns it into *Could not connect…*; `RequestForm` shows it with `role="alert"` and keeps everything she typed.
+
+## How to run and test Phase 5
+- Automated: `npm test`. `src/SignedInApp.test.tsx` pairs Asha and Ravi in the fake, creates a request as Asha, then renders the app as Ravi and checks it arrived; also reload, offline-send, load failure + Try again, and an expired row.
+- Manual (real Supabase, two browsers): README → "Manual test: a request reaches the family member (Phase 5)".
+
+## Phase 5 file-by-file
+
+| File | What / why | Inputs → outputs | Important parts | Common mistakes | Practice task |
+|---|---|---|---|---|---|
+| `src/lib/api/requests.ts` | The only code that touches `money_requests` | form data → saved row; nothing → my rows | `rpc('create_money_request')`, `.order(…)`, `toMoneyRequest` | Sending `family_id` or `status` from the browser; filtering in React instead of RLS | Write `toMoneyRequest` from memory |
+| `src/hooks/useMyRequests.ts` | Loads my requests with loading/error states | user id → `{ requests, loading, error, reload, upsert }` | `ignore` flag, `visibilitychange`, `upsert` | Wiping the list on a failed refresh; `loading` starting `false` | Add a `lastLoadedAt` time and show "Updated 10:42" |
+| `src/SignedInApp.tsx` | Switchboard with real requests | profile + link → screens | async `handleCreate`, first-load spinner, error banner | Blocking the whole screen on every reload | Show the error banner only on list screens |
+| `src/components/RequestForm.tsx` | Form now waits for the server | typed values → `onSubmit` Promise | `busy`, `try/catch/finally`, `submitError` | No busy state → double sends | Move focus to the error message when sending fails |
+| `src/components/FamilyResponse.tsx` | Answer area | status → buttons or outcome | shows a note while `onRespond` is not passed (Phase 6) | Showing buttons that don't save anything | — |
+| `src/pages/ElderHome.tsx`, `FamilyInbox.tsx` | Lists + **Refresh** | requests → cards | `onRefresh` prop | — | Disable Refresh while a load is running |
+| `src/test/fakeSupabase.ts` | Fake now has `money_requests` | same calls → same answers | `create_money_request` imitation, `order()`, `createPairedAccounts()` | Trusting the fake instead of `rls_checks.sql` | Add the "Recipient must be 3 to 100 characters" case to a test |
+
+## Phase 5 exercises (no AI; answers aren't included)
+1. **Path of a request.** On paper, draw boxes for RequestForm → SignedInApp → requests.ts → supabase-js → Postgres function → table → RLS → Ravi's inbox. Label each arrow with the data that travels (field names).
+2. **What the browser doesn't send.** List four columns of the saved row that the browser never sends, and who sets each one.
+3. **Break it on purpose.** In `useMyRequests.ts`, change `useState(true)` to `useState(false)` for `loading`. Run `npm test`. Which test fails and why? What would an elder see on a slow phone? Undo it.
+4. **Add a rule.** The demo cap is ₹1,00,000. Change it to ₹50,000 in *both* places it must change (browser and database). Which file is the one that actually protects the data?
+5. **Network tab.** With the real backend, send a request and find `rpc/create_money_request` in DevTools → Network. Write down the request body and compare it with the response.
+
+## Phase 5 self-test
+1. What does `await` pause: the function or the whole page?
+2. Why do our API functions `throw` when `error` is set, instead of returning it?
+3. Why does `listMyRequests` have no `.eq('elder_id', …)` filter, and why is that safe?
+4. Name the two validation boundaries and the purpose of each.
+5. Why does `loading` start as `true`?
+6. What does `upsert` do with a request that's already in the list?
+7. How does a new request reach Ravi's screen in Phase 5, and what will change in Phase 6?
+
+---
+
 ## 12. Glossary  *(grows every phase)*
 
 - **Component:** a function that returns UI.
@@ -885,3 +982,11 @@ If the code was wrong, step 3 raises *"That code is not valid. Check it and try 
 - **Single-use token:** something that stops working after one successful use.
 - **Test double / fake:** a stand-in object with the same shape as a real one, used in tests.
 - **Narrowing:** TypeScript working out a more exact type after an `if` check.
+- **Promise:** a placeholder for a result that arrives later (or an error).
+- **async / await:** write waiting code top to bottom; `await` pauses only the current function.
+- **`{ data, error }`:** what every supabase-js call returns; check `error` first.
+- **Query:** a read (`select`), filtered by RLS. **RPC:** a call to a database function, used for writes.
+- **Validation boundary:** a place where input is checked; the browser (for kindness) and the database (for security).
+- **Loading / empty / error state:** the different things a screen must show while talking to a server.
+- **Upsert:** update an item if it exists, otherwise insert it.
+- **`visibilitychange`:** browser event fired when a tab is hidden or shown again.

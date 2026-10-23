@@ -8,6 +8,7 @@ interface ElderHomeProps {
   nowMs: number
   onCreateRequest: () => void
   onOpenRequest: (requestId: string) => void
+  onRefresh: () => void
 }
 
 export function ElderHome({
@@ -17,6 +18,7 @@ export function ElderHome({
   nowMs,
   onCreateRequest,
   onOpenRequest,
+  onRefresh,
 }: ElderHomeProps) {
   return (
     <section aria-labelledby="elder-home-title">
@@ -42,6 +44,10 @@ export function ElderHome({
           ))}
         </ul>
       )}
+
+      <button type="button" className="button-secondary" onClick={onRefresh}>
+        Refresh
+      </button>
     </section>
   )
 }

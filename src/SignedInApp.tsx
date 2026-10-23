@@ -1,41 +1,38 @@
 import { useState } from 'react'
 import { Layout } from './components/Layout'
+import { REQUEST_TIMEOUT_SECONDS } from './config'
+import { useMyRequests } from './hooks/useMyRequests'
 import { useNow } from './hooks/useNow'
-import { createRequest, respondToRequest } from './mock/mockStore'
+import { createMoneyRequest } from './lib/api/requests'
 import { AboutSafety } from './pages/AboutSafety'
 import { CreateRequest } from './pages/CreateRequest'
 import { ElderHome } from './pages/ElderHome'
 import { FamilyInbox } from './pages/FamilyInbox'
 import { RequestDetail } from './pages/RequestDetail'
-import type { FamilyDecision, MoneyRequest, NewRequestInput, Profile, UserRole } from './types/domain'
+import type { NewRequestInput, Profile, UserRole } from './types/domain'
 import type { View } from './types/view'
 
 interface SignedInAppProps {
-  /** The signed-in person (real, from Supabase). Their role can never be switched. */
+  /** The signed-in person (from Supabase). Their role can never be switched. */
   profile: Profile
-  /** The person they are linked with (real, from Supabase). */
+  /** The person they are linked with (from Supabase). */
   linkedPerson: Profile
   onSignOut: () => void
-  /** Starting requests. Only tests pass this; the app starts with none. */
-  initialRequests?: MoneyRequest[]
 }
 
 function homeFor(role: UserRole): View {
   return role === 'elder' ? { name: 'elderHome' } : { name: 'familyInbox' }
 }
 
-/**
- * The switchboard for a signed-in, linked person.
- * People are real (Phase 4). Requests are still the local mock store from Phase 2:
- * they live only in this browser tab's memory. Phase 5 moves them into Supabase.
- */
-export function SignedInApp({ profile, linkedPerson, onSignOut, initialRequests = [] }: SignedInAppProps) {
+/** The switchboard for a signed-in, linked person. Requests come from Supabase (Phase 5). */
+export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppProps) {
   const role = profile.role
   const elder = role === 'elder' ? profile : linkedPerson
   const familyMember = role === 'family' ? profile : linkedPerson
 
   const [view, setView] = useState<View>(() => homeFor(role))
-  const [requests, setRequests] = useState<MoneyRequest[]>(initialRequests)
+  // Row Level Security sends only this person's requests, so no filtering is needed here.
+  const { requests, loading, error, reload, upsert } = useMyRequests(profile.id)
   // Re-render every second so pending requests turn "expired" on time.
   const nowMs = useNow()
 
@@ -53,29 +50,12 @@ export function SignedInApp({ profile, linkedPerson, onSignOut, initialRequests 
     return [profile, linkedPerson].find((person) => person.id === id)
   }
 
-  function handleCreate(input: NewRequestInput) {
-    const result = createRequest(
-      requests,
-      input,
-      { elderId: elder.id, familyId: familyMember.id },
-      Date.now(),
-    )
-    setRequests(result.requests)
-    openRequest(result.created.id)
+  /** May throw (no connection, not linked…); RequestForm shows the message. */
+  async function handleCreate(input: NewRequestInput) {
+    const created = await createMoneyRequest(input, REQUEST_TIMEOUT_SECONDS)
+    upsert(created)
+    openRequest(created.id)
   }
-
-  function handleRespond(requestId: string, decision: FamilyDecision): string | null {
-    const result = respondToRequest(requests, requestId, profile.id, decision, Date.now())
-    if (!result.ok) return result.error
-    setRequests(result.requests)
-    return null
-  }
-
-  // Each person only sees requests that belong to them (the database enforces
-  // the same rule with Row Level Security once requests move there in Phase 5).
-  const myRequests = requests.filter((r) =>
-    role === 'elder' ? r.elderId === profile.id : r.familyId === profile.id,
-  )
 
   function renderPage() {
     switch (view.name) {
@@ -84,10 +64,11 @@ export function SignedInApp({ profile, linkedPerson, onSignOut, initialRequests 
           <ElderHome
             elder={elder}
             familyMember={familyMember}
-            requests={myRequests}
+            requests={requests}
             nowMs={nowMs}
             onCreateRequest={() => goTo({ name: 'createRequest' })}
             onOpenRequest={openRequest}
+            onRefresh={reload}
           />
         )
       case 'createRequest':
@@ -103,13 +84,14 @@ export function SignedInApp({ profile, linkedPerson, onSignOut, initialRequests 
           <FamilyInbox
             familyMember={familyMember}
             linkedElder={elder}
-            requests={myRequests}
+            requests={requests}
             nowMs={nowMs}
             onOpenRequest={openRequest}
+            onRefresh={reload}
           />
         )
       case 'requestDetail': {
-        const request = myRequests.find((r) => r.id === view.requestId)
+        const request = requests.find((r) => r.id === view.requestId)
         return (
           <RequestDetail
             request={request}
@@ -117,7 +99,6 @@ export function SignedInApp({ profile, linkedPerson, onSignOut, initialRequests 
             familyMember={request && findPerson(request.familyId)}
             viewerRole={role}
             nowMs={nowMs}
-            onRespond={handleRespond}
             onBack={() => goTo(homeFor(role))}
           />
         )
@@ -127,12 +108,30 @@ export function SignedInApp({ profile, linkedPerson, onSignOut, initialRequests 
     }
   }
 
+  // Only the first load blocks the screen; later reloads keep the list visible.
+  const showLoading = loading && view.name !== 'createRequest' && view.name !== 'about'
+
   return (
     <Layout
       account={{ displayName: profile.displayName, onSignOut }}
       nav={{ role, currentView: view.name, onNavigate: goTo }}
     >
-      {renderPage()}
+      {error && (
+        <div className="warning" role="alert">
+          <strong className="warning-title">Could not refresh your requests.</strong>
+          <p>{error} What you see below may be out of date.</p>
+          <button type="button" onClick={reload}>
+            Try again
+          </button>
+        </div>
+      )}
+      {showLoading ? (
+        <p className="loading" role="status">
+          Loading your requests…
+        </p>
+      ) : (
+        renderPage()
+      )}
     </Layout>
   )
 }

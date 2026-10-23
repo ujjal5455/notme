@@ -35,7 +35,7 @@ function createFake() {
 
   function reset() {
     users = []
-    tables = { profiles: [], family_links: [], pairing_codes: [] }
+    tables = { profiles: [], family_links: [], pairing_codes: [], money_requests: [] }
     currentUser = null
     listeners = []
     codeQueue = ['P38SP4XS', 'K7QM3XPR', 'H2WZ9TNB']
@@ -72,17 +72,26 @@ function createFake() {
         return links.filter((l) => l.elder_id === me || l.family_id === me)
       case 'pairing_codes':
         return tables.pairing_codes.filter((c) => c.elder_id === me)
+      case 'money_requests':
+        return tables.money_requests.filter((r) => r.elder_id === me || r.family_id === me)
       default:
         return []
     }
   }
 
-  /** A tiny query builder: from(t).select().eq()/.in() then await, or .maybeSingle(). */
+  /** A tiny query builder: from(t).select().eq()/.in()/.order() then await, or .maybeSingle(). */
   function from(table: string) {
     const filters: ((row: Row) => boolean)[] = []
+    let sortBy: { column: string; ascending: boolean } | null = null
     const run = (): Result => {
       if (state.networkDown) return NETWORK_ERROR
-      return ok(visibleRows(table).filter((row) => filters.every((f) => f(row))))
+      const rows = visibleRows(table).filter((row) => filters.every((f) => f(row)))
+      if (sortBy) {
+        const { column, ascending } = sortBy
+        rows.sort((a, b) => String(a[column]).localeCompare(String(b[column])) * (ascending ? 1 : -1))
+      }
+      // Copies, like rows arriving over the network.
+      return ok(rows.map((row) => ({ ...row })))
     }
     const builder = {
       select: () => builder,
@@ -92,6 +101,10 @@ function createFake() {
       },
       in(column: string, values: unknown[]) {
         filters.push((row) => values.includes(row[column]))
+        return builder
+      },
+      order(column: string, options: { ascending?: boolean } = {}) {
+        sortBy = { column, ascending: options.ascending ?? true }
         return builder
       },
       async maybeSingle(): Promise<Result> {
@@ -165,6 +178,37 @@ function createFake() {
       pc.used_by = me
       return ok(link)
     },
+    create_money_request({ p_amount_inr, p_recipient, p_note, p_timeout_seconds }) {
+      const me = uid()
+      if (!me) return fail('You need to sign in first.')
+      if (roleOf(me) !== 'elder') return fail('Only an elder account can create a request.')
+      const link = tables.family_links.find((l) => l.elder_id === me)
+      if (!link) return fail('Link a family member before sending a request.')
+      const amount = p_amount_inr as number
+      if (!Number.isInteger(amount) || amount < 1 || amount > 100000) {
+        return fail('Amount must be a whole number of rupees from 1 to 100000.')
+      }
+      const recipient = String(p_recipient ?? '').trim()
+      if (recipient.length < 3 || recipient.length > 100) return fail('Recipient must be 3 to 100 characters.')
+      const note = String(p_note ?? '').trim() || null
+      if (note && note.length > 200) return fail('Note must be at most 200 characters.')
+      const timeout = Math.max(15, Math.min(600, Number(p_timeout_seconds ?? 60)))
+      const now = Date.now()
+      const row = {
+        id: `req-${nextId++}`,
+        elder_id: me,
+        family_id: link.family_id, // chosen by the "server" from the link, never by the browser
+        amount_inr: amount,
+        recipient,
+        note,
+        status: 'pending',
+        created_at: new Date(now).toISOString(),
+        expires_at: new Date(now + timeout * 1000).toISOString(),
+        responded_at: null,
+      }
+      tables.money_requests.push(row)
+      return ok({ ...row })
+    },
   }
 
   const supabase = {
@@ -217,7 +261,32 @@ function createFake() {
     },
   }
 
-  return { supabase, state, reset }
+  /** Test helper: put a row straight into a table, as if it had been saved earlier. */
+  function insertRow(table: string, row: Row) {
+    tables[table].push(row)
+  }
+
+  /** Test helper: sign up, choose a role and (for family) redeem a code, in one go. */
+  async function createPairedAccounts() {
+    await supabase.auth.signUp({ email: 'elder1@example.com', password: 'demo-pass-1' })
+    await supabase.rpc('create_my_profile', { p_role: 'elder', p_display_name: 'Asha (demo)' })
+    const { data: code } = await supabase.rpc('create_pairing_code')
+    await supabase.auth.signUp({ email: 'family1@example.com', password: 'demo-pass-1' })
+    await supabase.rpc('create_my_profile', { p_role: 'family', p_display_name: 'Ravi (demo)' })
+    await supabase.rpc('redeem_pairing_code', { p_code: (code as Row).code })
+    await supabase.auth.signOut()
+    const [elder, family] = tables.profiles
+    return {
+      elder: { id: String(elder.id), role: 'elder' as const, displayName: String(elder.display_name) },
+      family: { id: String(family.id), role: 'family' as const, displayName: String(family.display_name) },
+    }
+  }
+
+  async function signInAs(email: string) {
+    await supabase.auth.signInWithPassword({ email, password: 'demo-pass-1' })
+  }
+
+  return { supabase, state, reset, insertRow, createPairedAccounts, signInAs }
 }
 
 export const fake = createFake()

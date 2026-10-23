@@ -11,7 +11,8 @@ interface RequestDetailProps {
   familyMember: Profile | undefined
   viewerRole: UserRole
   nowMs: number
-  onRespond: (requestId: string, decision: FamilyDecision) => string | null
+  /** Not passed yet: answering through the database is added in Phase 6. */
+  onRespond?: (requestId: string, decision: FamilyDecision) => string | null
   onBack: () => void
 }
 
@@ -29,8 +30,8 @@ export function RequestDetail({
       <section>
         <h1>Request not found</h1>
         <p className="empty-state">
-          It may have been created in another browser tab. In this local demo, requests are not
-          shared between tabs or devices.
+          It may not have loaded yet, or it is not one of your requests. Go back and tap{' '}
+          <strong>Refresh</strong>.
         </p>
         <button type="button" className="button-secondary" onClick={onBack}>
           Back
@@ -57,7 +58,7 @@ export function RequestDetail({
         <FamilyResponse
           status={status}
           elderName={elderName}
-          onRespond={(decision) => onRespond(request.id, decision)}
+          onRespond={onRespond && ((decision) => onRespond(request.id, decision))}
         />
       )}
 

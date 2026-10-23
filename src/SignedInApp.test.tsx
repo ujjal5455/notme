@@ -1,99 +1,155 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { REQUEST_TIMEOUT_SECONDS } from './config'
-import { mockElder, mockFamily, mockRequests } from './mock/mockData'
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SignedInApp } from './SignedInApp'
+import { fake } from './test/fakeSupabase'
+import type { Profile } from './types/domain'
+
+vi.mock('./lib/supabaseClient', async () => ({
+  supabase: (await import('./test/fakeSupabase')).fake.supabase,
+}))
+
+let asha: Profile
+let ravi: Profile
 
 function click(name: string | RegExp) {
   fireEvent.click(screen.getByRole('button', { name }))
 }
 
-function renderAsElder(onSignOut = () => {}) {
-  render(<SignedInApp profile={mockElder} linkedPerson={mockFamily} onSignOut={onSignOut} />)
+async function renderAsElder(onSignOut = () => {}) {
+  await fake.signInAs('elder1@example.com')
+  const view = render(<SignedInApp profile={asha} linkedPerson={ravi} onSignOut={onSignOut} />)
+  await screen.findByRole('heading', { level: 1, name: /hello, asha/i })
+  return view
 }
 
-function renderAsFamily() {
-  render(<SignedInApp profile={mockFamily} linkedPerson={mockElder} onSignOut={() => {}} initialRequests={mockRequests} />)
+async function renderAsFamily() {
+  await fake.signInAs('family1@example.com')
+  const view = render(<SignedInApp profile={ravi} linkedPerson={asha} onSignOut={() => {}} />)
+  await screen.findByRole('heading', { name: /requests to confirm/i })
+  return view
 }
 
 /** As the elder: fill in and send a request for ₹2,500. */
-function createRequestAsElder() {
+function fillAndSend(amount = '2500', recipient = ' test.shop@demo-upi ') {
   click(/check a money request/i)
-  fireEvent.change(screen.getByLabelText(/amount in rupees/i), { target: { value: '2500' } })
-  fireEvent.change(screen.getByLabelText(/who are you paying/i), {
-    target: { value: 'test.shop@demo-upi' },
-  })
+  fireEvent.change(screen.getByLabelText(/amount in rupees/i), { target: { value: amount } })
+  fireEvent.change(screen.getByLabelText(/who are you paying/i), { target: { value: recipient } })
   click(/send to family/i)
 }
 
-afterEach(() => {
-  vi.useRealTimers()
+beforeEach(async () => {
+  fake.reset()
+  ;({ elder: asha, family: ravi } = await fake.createPairedAccounts())
 })
 
-describe('SignedInApp (real people, requests still local until Phase 5)', () => {
-  it('elder starts on home, sees who they are signed in as, and can sign out', () => {
+describe('SignedInApp (Phase 5: requests saved in Supabase)', () => {
+  it('shows "Loading your requests…" first, then the elder home', async () => {
+    await fake.signInAs('elder1@example.com')
+    render(<SignedInApp profile={asha} linkedPerson={ravi} onSignOut={() => {}} />)
+    expect(screen.getByRole('status')).toHaveTextContent('Loading your requests…')
+    expect(await screen.findByText(/you have not sent any requests yet/i)).toBeInTheDocument()
+  })
+
+  it('elder can sign out, and has no role switch', async () => {
     const onSignOut = vi.fn()
-    renderAsElder(onSignOut)
-    expect(screen.getByRole('heading', { level: 1, name: /hello, asha/i })).toBeInTheDocument()
-    expect(screen.getByText(/no real money is sent/i)).toBeInTheDocument()
-    expect(screen.getByText(/money requests still stay in this browser tab/i)).toBeInTheDocument()
-    // No more demo role switch: the role comes from the account.
+    await renderAsElder(onSignOut)
     expect(screen.queryByRole('button', { name: 'Family' })).not.toBeInTheDocument()
     click('Sign out')
     expect(onSignOut).toHaveBeenCalledTimes(1)
   })
 
-  it('elder creates a request and waits for the linked family member', () => {
-    renderAsElder()
-    createRequestAsElder()
-    expect(screen.getByRole('heading', { level: 1, name: '₹2,500' })).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent(/waiting for ravi/i)
-    // The elder can never answer their own request.
+  it('elder creates a request: it is saved, and the screen waits for Ravi', async () => {
+    await renderAsElder()
+    fillAndSend()
+    expect(await screen.findByRole('heading', { level: 1, name: '₹2,500' })).toBeInTheDocument()
+    expect(screen.getByText('test.shop@demo-upi')).toBeInTheDocument() // trimmed by the "database"
+    expect(screen.getByRole('status')).toHaveTextContent(/waiting for ravi \(demo\) to confirm/i)
     expect(screen.queryByRole('button', { name: 'Confirm request' })).not.toBeInTheDocument()
   })
 
-  it('a request nobody answers turns into an "unconfirmed" warning', () => {
-    vi.useFakeTimers()
-    renderAsElder()
-    createRequestAsElder()
-    act(() => {
-      vi.advanceTimersByTime((REQUEST_TIMEOUT_SECONDS + 1) * 1000)
-    })
-    const warning = screen.getByRole('alert')
-    expect(warning).toHaveTextContent(/has not been confirmed/i)
-    expect(warning).toHaveTextContent(/may be busy or offline/i)
+  it('the request is delivered to the linked family member, and survives a reload', async () => {
+    const elderView = await renderAsElder()
+    fillAndSend()
+    await screen.findByRole('heading', { level: 1, name: '₹2,500' })
+    elderView.unmount()
+
+    // Ravi opens the app (another device in real life).
+    const familyView = await renderAsFamily()
+    const waiting = screen.getByRole('heading', { name: /waiting for your answer/i }).nextElementSibling as HTMLElement
+    expect(within(waiting).getByRole('button', { name: /₹2,500/ })).toBeInTheDocument()
+    click(/₹2,500/)
+    expect(screen.getByText('test.shop@demo-upi')).toBeInTheDocument()
+    expect(screen.getByText('Asha (demo)')).toBeInTheDocument()
+    // Answering is Phase 6: an honest note instead of buttons that would not save.
+    expect(screen.queryByRole('button', { name: 'Confirm request' })).not.toBeInTheDocument()
+    expect(screen.getByText(/connected in the next phase/i)).toBeInTheDocument()
+    familyView.unmount()
+
+    // Asha reloads: her request is still there.
+    await renderAsElder()
+    expect(screen.getByRole('button', { name: /₹2,500/ })).toBeInTheDocument()
   })
 
-  it('shows helpful text for an invalid amount and stays on the form', () => {
-    renderAsElder()
-    click(/check a money request/i)
-    fireEvent.change(screen.getByLabelText(/amount in rupees/i), { target: { value: '-50' } })
+  it('family member sees new requests after "Check for new requests"', async () => {
+    await renderAsFamily()
+    expect(screen.getByText(/nothing is waiting for you/i)).toBeInTheDocument()
+
+    // Asha sends a request while Ravi's screen is open.
+    await fake.signInAs('elder1@example.com')
+    await fake.supabase.rpc('create_money_request', { p_amount_inr: 900, p_recipient: 'shop@demo-upi' })
+    await fake.signInAs('family1@example.com')
+
+    click('Check for new requests')
+    expect(await screen.findByRole('button', { name: /₹900/ })).toBeInTheDocument()
+  })
+
+  it('shows a saved request whose deadline passed as an "unconfirmed" warning', async () => {
+    fake.insertRow('money_requests', {
+      id: 'req-old',
+      elder_id: asha.id,
+      family_id: ravi.id,
+      amount_inr: 5000,
+      recipient: 'late.reply@demo-upi',
+      note: null,
+      status: 'pending',
+      created_at: new Date(Date.now() - 120_000).toISOString(),
+      expires_at: new Date(Date.now() - 60_000).toISOString(),
+      responded_at: null,
+    })
+    await renderAsElder()
+    click(/₹5,000/)
+    expect(screen.getByRole('alert')).toHaveTextContent(/has not been confirmed/i)
+  })
+
+  it('keeps the form and shows a message when sending fails', async () => {
+    await renderAsElder()
+    fake.state.networkDown = true
+    fillAndSend()
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not connect/i)
+    expect(screen.getByRole('heading', { name: /check a money request/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/amount in rupees/i)).toHaveValue('2500')
+
+    fake.state.networkDown = false
     click(/send to family/i)
+    expect(await screen.findByRole('heading', { level: 1, name: '₹2,500' })).toBeInTheDocument()
+  })
+
+  it('says so when the list cannot be loaded, and recovers with "Try again"', async () => {
+    fake.state.networkDown = true
+    await fake.signInAs('elder1@example.com') // sign-in itself happened earlier, before the network dropped
+    render(<SignedInApp profile={asha} linkedPerson={ravi} onSignOut={() => {}} />)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not refresh your requests/i)
+
+    fake.state.networkDown = false
+    click('Try again')
+    expect(await screen.findByText(/you have not sent any requests yet/i)).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shows helpful text for an invalid amount and sends nothing', async () => {
+    await renderAsElder()
+    fillAndSend('-50')
     expect(screen.getByText(/whole rupees and numbers only/i)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /check a money request/i })).toBeInTheDocument()
-  })
-
-  it('family member starts on the inbox, linked with the elder', () => {
-    renderAsFamily()
-    expect(screen.getByRole('heading', { name: /requests to confirm/i })).toBeInTheDocument()
-    expect(screen.getByText('Asha (demo)')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /waiting for your answer/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /₹25,000/ })).toBeInTheDocument()
-  })
-
-  it('family member confirms a pending request', () => {
-    renderAsFamily()
-    click(/₹25,000/)
-    click('Confirm request')
-    expect(screen.getByText(/you confirmed this request/i)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Confirm request' })).not.toBeInTheDocument()
-  })
-
-  it('family member rejects a pending request', () => {
-    renderAsFamily()
-    click(/₹25,000/)
-    click('Reject request')
-    expect(screen.getByText(/you rejected this request/i)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Reject request' })).not.toBeInTheDocument()
   })
 })

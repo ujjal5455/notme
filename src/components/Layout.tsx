@@ -43,8 +43,7 @@ export function Layout({ account, nav, children }: LayoutProps) {
 
       <p className="demo-banner">
         <strong>Demo prototype:</strong> made-up people and data only. No real money is sent.
-        Accounts and family links are saved online; money requests still stay in this browser tab
-        until the next phase.
+        Requests are saved online; Confirm/Reject and live updates come in the next phase.
       </p>
 
       {nav && (

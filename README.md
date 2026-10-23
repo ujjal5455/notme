@@ -6,7 +6,7 @@
 
 ## Current status
 
-Phase 4 of 9. **Real accounts and pairing** use Supabase: sign up / sign in, choose a role (elder or family member) once, and link an elder with one family member through a one-time code shown in person. **Money requests are still local mock data** (Phase 2): they live only in the browser tab that created them, are **not sent to the other device yet**, and are lost on reload. Phase 5 moves them into the database. See [`docs/PLAN.md`](docs/PLAN.md) for progress and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md) for what was done and tested.
+Phase 5 of 9. **Real accounts and pairing** use Supabase: sign up / sign in, choose a role (elder or family member) once, and link an elder with one family member through a one-time code shown in person. **Money requests are saved in the database**: the elder creates one, and the linked family member sees it in their inbox on another device (after **Check for new requests**, or when they come back to the tab). Requests survive a reload. **Not yet:** the family member cannot Confirm/Reject yet, and screens don't update live. Both come in Phase 6. See [`docs/PLAN.md`](docs/PLAN.md) for progress and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md) for what was done and tested.
 
 ## Run it locally
 
@@ -34,7 +34,19 @@ Use two separate browser sessions, for example a normal window and a private/inc
 7. Reload both windows → each is still signed in and goes straight to its own screen.
 8. In the Supabase **Table Editor**, `family_links` should have exactly one row for this pair.
 
-Leftover test accounts can be deleted in Supabase → **Authentication → Users** (their profile and link rows are deleted with them).
+Leftover test accounts can be deleted in Supabase → **Authentication → Users** (their profile, link and request rows are deleted with them).
+
+### Manual test: a request reaches the family member (Phase 5)
+
+Use the linked pair from the Phase 4 test (window A = elder, window B = family member).
+
+1. Window A: **Check a money request** → amount `2500`, recipient `test.shop@demo-upi`, note `Caller said it is urgent` → **Send to family to confirm**. The button says *Sending…*, then you see "₹2,500 … Waiting for Ravi (demo) to confirm".
+2. Window B: **Check for new requests** (or switch away from the tab and back) → ₹2,500 appears under "Waiting for your answer". Open it: amount, recipient, note and Asha's name match exactly. A note says Confirm/Reject comes in the next phase.
+3. Reload window A → **Home** still lists the ₹2,500 request.
+4. Wait 60 seconds → both windows show the request as **Unconfirmed / expired** (worked out from the deadline the database set).
+5. **Third account:** sign in as `stranger@example.com`. It is not linked, so the app stops at the pairing screen and never shows any request. That the *database* also refuses (not just the screen) is proven by `rls_checks.sql` → "visibility: stranger C sees 0 requests", which passed on your project.
+6. Supabase **Table Editor → money_requests**: the row's `family_id` is Ravi's user id, though the browser never sent it. `status` is `pending`.
+7. **Offline:** in window A, DevTools → Network → **Offline**, try to send a request → "Could not connect…" and the form keeps what you typed. Turn **Offline** off and send again.
 
 ## Scripts
 
@@ -89,6 +101,8 @@ With Docker Desktop running, `npx supabase init` then `npx supabase start` start
 - Anyone who can open the app can create an account (sign-up is open and emails are not verified). Fine for synthetic demo accounts only.
 - A family member may be linked to several elders in the database, but the screens show only the first linked elder's name.
 - The elder's pairing screen does not notice the new link by itself; the elder taps **My family member has entered the code**.
+- Until Phase 6, new requests reach the family member's screen only when they tap **Check for new requests** or return to the tab; there are no live updates yet, and Confirm/Reject is not connected.
+- The countdown uses the phone's own clock against the deadline set by the database clock; a phone with a wrong clock shows "expired" too early or too late (Phase 7 corrects this). The database still refuses late answers.
 
 ## Environment variables
 

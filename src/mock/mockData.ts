@@ -1,6 +1,5 @@
 // SYNTHETIC demo data. No real people, numbers or UPI IDs.
-// These are the starting requests; new ones are added in App.tsx state (Phase 2).
-// Phase 5 replaces this with rows loaded from Supabase.
+// Used only by tests since Phase 5; the app loads real rows from Supabase.
 import type { MoneyRequest, Profile } from '../types/domain'
 
 export const mockElder: Profile = {

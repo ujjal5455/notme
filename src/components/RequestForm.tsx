@@ -11,7 +11,8 @@ const EMPTY_VALUES: RequestFormValues = { amount: '', recipient: '', note: '' }
 const FIELD_ORDER: (keyof RequestFormValues)[] = ['amount', 'recipient', 'note']
 
 interface RequestFormProps {
-  onSubmit: (input: NewRequestInput) => void
+  /** Saves the request. If it throws, the form shows the error message and keeps what was typed. */
+  onSubmit: (input: NewRequestInput) => Promise<void> | void
   onCancel: () => void
 }
 
@@ -22,6 +23,8 @@ interface RequestFormProps {
 export function RequestForm({ onSubmit, onCancel }: RequestFormProps) {
   const [values, setValues] = useState<RequestFormValues>(EMPTY_VALUES)
   const [errors, setErrors] = useState<RequestFormErrors>({})
+  const [busy, setBusy] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   function updateField(field: keyof RequestFormValues, value: string) {
     setValues((previous) => ({ ...previous, [field]: value }))
@@ -29,8 +32,10 @@ export function RequestForm({ onSubmit, onCancel }: RequestFormProps) {
     setErrors((previous) => ({ ...previous, [field]: undefined }))
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault() // stop the browser from reloading the page
+    if (busy) return // a double tap must not send twice
+    setSubmitError(null)
     const result = validateRequestForm(values)
     if (!result.ok) {
       setErrors(result.errors)
@@ -39,7 +44,16 @@ export function RequestForm({ onSubmit, onCancel }: RequestFormProps) {
       if (firstInvalid) document.getElementById(firstInvalid)?.focus()
       return
     }
-    onSubmit(result.data)
+
+    setBusy(true)
+    try {
+      await onSubmit(result.data)
+    } catch (error) {
+      // e.g. "Could not connect…" or the database's "Link a family member before sending a request."
+      setSubmitError(error instanceof Error ? error.message : 'Could not send. Please try again.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -107,8 +121,14 @@ export function RequestForm({ onSubmit, onCancel }: RequestFormProps) {
         )}
       </div>
 
-      <button type="submit" className="button-primary">
-        Send to family to confirm
+      {submitError && (
+        <p className="field-error" role="alert">
+          {submitError}
+        </p>
+      )}
+
+      <button type="submit" className="button-primary" disabled={busy}>
+        {busy ? 'Sending…' : 'Send to family to confirm'}
       </button>
       <button type="button" className="button-secondary" onClick={onCancel}>
         Cancel
