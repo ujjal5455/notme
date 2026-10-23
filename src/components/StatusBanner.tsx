@@ -15,7 +15,7 @@ export function StatusBanner({ status, familyName }: StatusBannerProps) {
           <p className="banner-title">Waiting for {familyName} to confirm.</p>
           <p>Do not pay yet.</p>
           <p className="banner-demo-hint">
-            Local demo: tap <strong>Family</strong> at the top to answer as {familyName}.
+            Demo: requests are not sent to {familyName}'s phone yet. That comes in the next phase.
           </p>
         </div>
       )

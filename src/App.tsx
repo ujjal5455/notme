@@ -1,121 +1,83 @@
-import { useState } from 'react'
+import { useAuth } from './auth/authContext'
 import { Layout } from './components/Layout'
-import { useNow } from './hooks/useNow'
-import { findProfile, mockElder, mockFamily, mockRequests } from './mock/mockData'
-import { createRequest, respondToRequest } from './mock/mockStore'
-import { AboutSafety } from './pages/AboutSafety'
-import { CreateRequest } from './pages/CreateRequest'
-import { ElderHome } from './pages/ElderHome'
-import { FamilyInbox } from './pages/FamilyInbox'
-import { RequestDetail } from './pages/RequestDetail'
-import type { FamilyDecision, MoneyRequest, NewRequestInput, UserRole } from './types/domain'
-import type { View } from './types/view'
+import { ChooseRole } from './pages/ChooseRole'
+import { PairElder } from './pages/PairElder'
+import { PairFamily } from './pages/PairFamily'
+import { SignIn } from './pages/SignIn'
+import { SignedInApp } from './SignedInApp'
 
-function homeFor(role: UserRole): View {
-  return role === 'elder' ? { name: 'elderHome' } : { name: 'familyInbox' }
-}
-
+/**
+ * The gate. Each person passes the same checkpoints, in order:
+ * signed in? → has a profile (role)? → linked with a family member? → the app.
+ */
 export default function App() {
-  const [role, setRole] = useState<UserRole>('elder')
-  const [view, setView] = useState<View>({ name: 'elderHome' })
-  // The shared mock store: ONE list that both the elder and family screens read.
-  // It lives only in this browser tab's memory and is lost on reload.
-  const [requests, setRequests] = useState<MoneyRequest[]>(mockRequests)
-  // Re-render every second so pending requests turn "expired" on time.
-  const nowMs = useNow()
+  const auth = useAuth()
 
-  // Every screen change goes through here, so each new screen starts at the top
-  // (otherwise a phone stays scrolled halfway down the previous screen).
-  function goTo(nextView: View) {
-    setView(nextView)
-    window.scrollTo(0, 0)
-  }
-
-  function switchRole(nextRole: UserRole) {
-    setRole(nextRole)
-    // Both people may view the same request, so stay on it; otherwise go home.
-    if (view.name !== 'requestDetail') goTo(homeFor(nextRole))
-  }
-
-  function openRequest(requestId: string) {
-    goTo({ name: 'requestDetail', requestId })
-  }
-
-  function handleCreate(input: NewRequestInput) {
-    const result = createRequest(
-      requests,
-      input,
-      { elderId: mockElder.id, familyId: mockFamily.id },
-      Date.now(),
+  if (auth.status === 'loading') {
+    return (
+      <Layout>
+        <p className="loading" role="status">
+          Loading…
+        </p>
+      </Layout>
     )
-    setRequests(result.requests)
-    openRequest(result.created.id)
   }
 
-  function handleRespond(requestId: string, decision: FamilyDecision): string | null {
-    const result = respondToRequest(requests, requestId, mockFamily.id, decision, Date.now())
-    if (!result.ok) return result.error
-    setRequests(result.requests)
-    return null
+  if (auth.status === 'signedOut') {
+    return (
+      <Layout>
+        <SignIn />
+      </Layout>
+    )
   }
 
-  // Mock "queries": each person only sees requests that belong to them.
-  // Phase 3 moves this rule into the database (Row Level Security).
-  const elderRequests = requests.filter((r) => r.elderId === mockElder.id)
-  const familyRequests = requests.filter((r) => r.familyId === mockFamily.id)
-
-  function renderPage() {
-    switch (view.name) {
-      case 'elderHome':
-        return (
-          <ElderHome
-            elder={mockElder}
-            familyMember={mockFamily}
-            requests={elderRequests}
-            nowMs={nowMs}
-            onCreateRequest={() => goTo({ name: 'createRequest' })}
-            onOpenRequest={openRequest}
-          />
-        )
-      case 'createRequest':
-        return (
-          <CreateRequest
-            familyMember={mockFamily}
-            onSubmit={handleCreate}
-            onCancel={() => goTo({ name: 'elderHome' })}
-          />
-        )
-      case 'familyInbox':
-        return (
-          <FamilyInbox
-            familyMember={mockFamily}
-            requests={familyRequests}
-            nowMs={nowMs}
-            onOpenRequest={openRequest}
-          />
-        )
-      case 'requestDetail': {
-        const request = requests.find((r) => r.id === view.requestId)
-        return (
-          <RequestDetail
-            request={request}
-            elder={request && findProfile(request.elderId)}
-            familyMember={request && findProfile(request.familyId)}
-            viewerRole={role}
-            nowMs={nowMs}
-            onRespond={handleRespond}
-            onBack={() => goTo(homeFor(role))}
-          />
-        )
-      }
-      case 'about':
-        return <AboutSafety />
-    }
+  if (auth.status === 'error') {
+    return (
+      <Layout account={{ displayName: null, onSignOut: auth.signOut }}>
+        <section>
+          <h1>Something went wrong</h1>
+          <p className="field-error" role="alert">
+            {auth.message}
+          </p>
+          <button type="button" className="button-primary" onClick={auth.retry}>
+            Try again
+          </button>
+        </section>
+      </Layout>
+    )
   }
 
+  // From here on TypeScript knows auth.status is 'signedIn'.
+  const { profile, link } = auth
+  const account = { displayName: profile?.displayName ?? null, onSignOut: auth.signOut }
+
+  if (!profile) {
+    return (
+      <Layout account={account}>
+        <ChooseRole onChosen={auth.refresh} />
+      </Layout>
+    )
+  }
+
+  if (!link) {
+    return (
+      <Layout account={account}>
+        {profile.role === 'elder' ? (
+          <PairElder userId={auth.user.id} onLinked={auth.refresh} />
+        ) : (
+          <PairFamily onLinked={auth.refresh} />
+        )}
+      </Layout>
+    )
+  }
+
+  // key: if a different person signs in on this device, start the app fresh.
   return (
-    <Layout role={role} currentView={view.name} onSwitchRole={switchRole} onNavigate={goTo}>
-      {renderPage()}
-    </Layout>
+    <SignedInApp
+      key={profile.id}
+      profile={profile}
+      linkedPerson={link.linkedPerson}
+      onSignOut={auth.signOut}
+    />
   )
 }

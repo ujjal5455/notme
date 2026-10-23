@@ -692,6 +692,158 @@ Honesty note: so far this ran on PGlite (real PostgreSQL in WebAssembly) with a 
 
 ---
 
+# Phase 4 — Authentication and trusted-family pairing
+
+What changed: the app now has **real accounts** (Supabase Auth), a **role chosen once**, and **pairing with a one-time code**. Money requests are still the local mock store from Phase 2; Phase 5 moves them into the database.
+
+## 6. Authentication, roles, pairing and authorization (section 6, continued)
+
+### Sessions and tokens
+When you sign in, Supabase checks your email and password and gives the browser a **session**: an **access token** (a signed note saying "this is user `5b1e…`", valid for about an hour) plus a **refresh token** used to get a new access token before the old one runs out. `supabase-js` saves the session in the browser's `localStorage`, attaches the access token to every request, and refreshes it for you. That's why a reload keeps you signed in.
+
+*Analogy:* a festival wristband. The ticket desk (Auth) checks your ticket once and gives you a wristband (access token). Every stall (database) looks at the wristband instead of asking for your ticket again. The wristband expires, so you swap it for a fresh one (refresh token) without queueing again.
+
+### User id, profile and role
+- The **user id** comes from Supabase Auth (`auth.users`). The browser never chooses it; the database reads it from the token with `auth.uid()`.
+- The **profile** (`public.profiles`) adds what *our* app needs: role and display name.
+- The **role is stored in the database and set once** by `create_my_profile`. There is no update function, so it can never change. A role kept only in React state could be edited by anyone with the browser's developer tools.
+
+### Why "pick your trusted family member from a list" is insecure
+If the browser sent "link me with user X", anyone could link themselves to any elder and approve that elder's requests. Instead:
+1. The elder's phone asks the **database** for a random code (`create_pairing_code`).
+2. The family member types it **while they're together in person**.
+3. The **database** checks that the code exists, hasn't been used and hasn't expired, then creates the link in one transaction (`redeem_pairing_code`).
+
+The browser only ever sends a code. It never sends user ids.
+
+### Single-use, short-lived codes
+- **Short-lived (10 minutes):** a code photographed or overheard is soon useless.
+- **Single-use:** `used_at` is set when redeemed; a second attempt gets "already been used".
+- **One family member per elder:** `family_links.elder_id` is `unique`.
+- **Random from 32 characters, 8 long:** about 10¹² possibilities, generated with a cryptographic random generator.
+- **The in-person rule is the real defence.** A scammer on the phone may ask the elder to read out the code. The screen warns against exactly that.
+
+### Sequence diagram: linking Asha and Ravi
+```mermaid
+sequenceDiagram
+  participant A as Asha's phone (elder)
+  participant S as Supabase (Auth + database)
+  participant R as Ravi's phone (family)
+  A->>S: signUp(elder1@example.com, password)
+  S-->>A: session (access token for Asha)
+  A->>S: rpc create_my_profile('elder', 'Asha (demo)')
+  A->>S: rpc create_pairing_code()
+  S-->>A: { code: P38SP4XS, expires_at: +10 min }
+  Note over A,R: In person: Asha shows the screen, Ravi types the code
+  R->>S: signUp + create_my_profile('family', 'Ravi (demo)')
+  R->>S: rpc redeem_pairing_code('p38s-p4xs')
+  S->>S: code valid? unused? not expired? caller is family? elder not linked yet?
+  S-->>R: family_links row (Asha ↔ Ravi)
+  A->>S: select family_links (RLS: only Asha's own link)
+  S-->>A: the link + Ravi's profile
+```
+
+## New React and TypeScript concepts (Phase 4)
+
+### Context: sharing "who is signed in" without passing props everywhere
+`AuthProvider` loads the session, profile and link once and puts them in a **context**. Any component below it calls `useAuth()` to read them.
+```tsx
+const AuthContext = createContext<AuthValue>({ status: 'loading' })
+export function useAuth() { return useContext(AuthContext) }
+// main.tsx
+<AuthProvider><App /></AuthProvider>
+```
+*Analogy:* a notice board in the hallway. Instead of handing a note to every room, you pin it up once and every room can read it.
+
+### A discriminated union for "where is this person?"
+```ts
+type AuthValue =
+  | { status: 'loading' }
+  | { status: 'signedOut' }
+  | { status: 'error'; message: string; retry: () => void; signOut: () => void }
+  | { status: 'signedIn'; user: User; profile: Profile | null; link: MyLink | null; refresh: () => void; signOut: () => void }
+```
+After `if (auth.status === 'signedOut') return …`, TypeScript **narrows** `auth`, so later lines can safely use `auth.profile`. Forgetting a case becomes a type error instead of a crash.
+
+### The gate: early returns in order
+`App.tsx` asks the same questions for every person: loading? signed out? error? no profile? no link? Each "no" returns a different screen; only a person who passes every check reaches `SignedInApp`.
+
+### Subscriptions and cleanup (again)
+`supabase.auth.onAuthStateChange(...)` keeps calling us on sign-in, sign-out and token refresh. The effect returns `() => data.subscription.unsubscribe()` so the listener is removed when the component goes away. This is the same idea as `clearInterval` in `useNow`.
+
+### Async event handlers: busy, try, catch, finally
+```tsx
+setBusy(true)
+try {
+  await redeemPairingCode(code)
+  onLinked()
+} catch (error) {
+  setErrorMessage(error instanceof Error ? error.message : 'Could not link. Please try again.')
+} finally {
+  setBusy(false) // always runs, success or failure
+}
+```
+`busy` disables the button so a double tap can't send twice, and every failure becomes a visible message instead of silence.
+
+### Not letting an old answer overwrite a new one
+`AuthProvider` labels each load with `loadKey` (`"user-id#reload-count"`). A result is used only if its label matches the current one, and the effect's cleanup sets `ignore = true`. So if you sign out while a slow request is still running, its late answer is thrown away.
+
+## Tracing a real example through the code
+
+Ravi types `p38s-p4xs` and taps **Link**:
+1. `PairFamily.handleSubmit` strips non-letters/digits → 8 characters, so it passes the quick check.
+2. `redeemPairingCode(code)` in `src/lib/api/pairing.ts` calls `supabase.rpc('redeem_pairing_code', { p_code: code })`. `supabase-js` adds Ravi's access token.
+3. In Postgres, `redeem_pairing_code` reads `auth.uid()` = Ravi, checks his role is `family`, upper-cases the code to `P38SP4XS`, locks that row (`for update`), checks it's unused and unexpired, inserts `family_links (Asha, Ravi)` and marks the code used.
+4. No error, so `onLinked()` runs. That's `auth.refresh` from `App.tsx`.
+5. `refresh` bumps `reloadKey`. `AuthProvider` reloads `getMyProfile` and `getMyLinks`. RLS lets Ravi read his own link and Asha's profile ("read linked person" policy).
+6. The gate sees `profile` and `link`, so it renders `SignedInApp`, which shows the family inbox "linked with **Asha (demo)**".
+
+If the code was wrong, step 3 raises *"That code is not valid. Check it and try again."*, `supabase-js` returns it as `error.message`, `friendlyMessage` leaves it unchanged, and `PairFamily` shows it with `role="alert"`.
+
+## How to run and test Phase 4
+- Automated (no server needed): `npm test`. `src/App.test.tsx` drives the whole gate against `src/test/fakeSupabase.ts`, an in-memory stand-in with the same rules and messages as the SQL functions.
+- Manual (real Supabase, two browsers): README → "Manual test: two accounts, two browsers".
+- A fake only proves that the **React code** reacts correctly to each answer. That the **real database** gives those answers is proven by `rls_checks.sql` and the manual test.
+
+## Phase 4 file-by-file
+
+| File | What / why | Inputs → outputs | Important parts | Common mistakes | Practice task |
+|---|---|---|---|---|---|
+| `src/lib/supabaseClient.ts` | The one Supabase client | `.env.local` values → `supabase` object | `createClient(url, key)`; throws if values are missing | Putting the secret key here; creating several clients | Make the error message also say "then restart npm run dev" |
+| `src/lib/api/errors.ts` | Friendly error text | raw message → message for people | network regex; DB messages unchanged | Showing "TypeError: Failed to fetch" to an elder | Add a case for "JWT expired" |
+| `src/lib/api/profile.ts` | Read/create my profile | user id / role + name → `Profile` | `.maybeSingle()`, `rpc('create_my_profile')`, snake_case → camelCase | Sending a user id to the RPC | Write `toProfile` from memory |
+| `src/lib/api/pairing.ts` | Links and codes | user id / code → links, code, or error | No filter needed thanks to RLS; `.in('id', …)` | Trusting the client to filter links | Explain why `getMyLinks` makes two queries |
+| `src/auth/authContext.ts` | The `AuthValue` type + `useAuth()` | — | discriminated union | Using `auth.profile` before checking `status` | Add a `'signedIn'` field and watch TypeScript point to every place it's needed |
+| `src/auth/AuthProvider.tsx` | Tracks session, profile, link | Supabase events → `AuthValue` | two effects, `loadKey` label, unsubscribe | Forgetting cleanup; letting a stale load overwrite a new one | Draw a timeline of `user`, `loadKey`, `loaded` for sign-in → refresh |
+| `src/App.tsx` | The gate | `useAuth()` → one screen | early returns in a fixed order | Rendering the app before checking the link | Add a "Your account is being set up" text to the loading screen |
+| `src/SignedInApp.tsx` | Phase 2 switchboard with real people | profile + linked person → screens | role from the profile; `findPerson` | Re-adding a role switch | Show the linked person's name in the header |
+| `src/pages/SignIn.tsx` | Sign in / create demo account | email + password → session | general sign-in error; `autoComplete` | Saying "no account with this email" (leaks who has accounts) | Add a "show password" checkbox |
+| `src/pages/ChooseRole.tsx` | Pick role once + name | radio + text → profile row | `<fieldset>`/`<legend>`, `maxLength={40}` | Radios without a shared `name` | Add a confirmation step "Are you sure? This can't be changed" |
+| `src/pages/PairElder.tsx` | Show a code | — → code + countdown | in-person warning, `aria-label` spelled out, check button | Reading the code aloud as a word for screen readers | Make the code text bigger on wide screens only |
+| `src/pages/PairFamily.tsx` | Enter a code | code → link or message | quick length check; DB messages shown as is | Upper-casing in the browser *instead of* in the DB | Show "Linking…" text below the button too |
+| `src/hooks/useCountdown.ts` | Seconds left | `expiresAt` → whole seconds | `Math.ceil`, `Math.max(0, …)` | Rounding down, so 0 shows too early | Add a `minutes` return value |
+| `src/test/fakeSupabase.ts` | In-memory stand-in for tests | same calls as supabase-js → `{ data, error }` | simplified RLS; same messages as SQL | Believing a passing fake proves the real DB is safe | Add `networkDown` handling to `signOut` |
+| `src/components/Layout.tsx` | Frame: header, banner, menu | optional `account` and `nav` | Sign out always available once signed in | Hiding sign-out on the pairing screens | — |
+
+## Phase 4 exercises (no AI; answers aren't included)
+1. **Rebuild the gate.** In a scratch file, write `App` with five early returns (loading, signed out, error, no profile, no link) using a hard-coded `AuthValue`. Change the value by hand and check each screen appears.
+2. **Spot the hole.** A teammate suggests: "Let the family member pick the elder from a dropdown of all elders." Write three sentences on what an attacker could do, and which table/policy would stop it.
+3. **Predict, then check.** Using `src/test/fakeSupabase.ts` and a new test, predict what Ravi sees if he types Asha's code **after** 10 minutes. (Hint: `vi.useFakeTimers()` + `vi.advanceTimersByTime`.) Write the test, then run it.
+4. **Manual security check.** Sign in as the stranger account, open the browser's DevTools → **Network** tab, and reload. Find the request whose address contains `family_links` and look at its **Response**. What do you get, even though Asha and Ravi's link exists? Which policy in `0002_rls.sql` decides it?
+5. **Rebuild exercise.** From memory, write `redeemPairingCode` in `pairing.ts`: one `rpc` call, check `error`, throw a friendly message.
+
+## Phase 4 self-test
+1. Authentication vs authorization: which one does sign-in give you, and which one decides whether Ravi can read Asha's profile?
+2. Where is the session stored in the browser, and why does a reload keep you signed in?
+3. Why is the role stored in the database and not just in React state?
+4. Name four properties of the pairing code that make it hard to misuse.
+5. Why does the browser never send a user id when linking?
+6. What does `onAuthStateChange` do, and why must we unsubscribe?
+7. What problem does `loadKey` solve?
+8. Why does the sign-in error not say whether the email exists?
+
+---
+
 ## 12. Glossary  *(grows every phase)*
 
 - **Component:** a function that returns UI.
@@ -723,3 +875,13 @@ Honesty note: so far this ran on PGlite (real PostgreSQL in WebAssembly) with a 
 - **RPC / database function:** SQL code the app calls by name (`supabase.rpc(...)`).
 - **Security definer:** a function that runs with its owner's rights; must check the caller itself.
 - **`auth.uid()`:** the signed-in user's id, read from their login token.
+- **Session:** what the browser keeps after sign-in: an access token and a refresh token.
+- **Access token:** a short-lived signed note saying who you are; sent with every request.
+- **Refresh token:** used to get a new access token without signing in again.
+- **Context / provider:** React's way to share a value (like "who is signed in") with every component below the provider.
+- **`useAuth()`:** Flod's custom hook that reads the auth context.
+- **Gate:** the ordered checks in `App.tsx` that decide which screen a person may see.
+- **Pairing code:** a random, single-use, 10-minute code an elder shows in person to link one family member.
+- **Single-use token:** something that stops working after one successful use.
+- **Test double / fake:** a stand-in object with the same shape as a real one, used in tests.
+- **Narrowing:** TypeScript working out a more exact type after an `if` check.

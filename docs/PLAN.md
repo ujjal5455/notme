@@ -10,7 +10,7 @@
 - [x] **Phase 1** — Scaffold and run the app (mock screens)
 - [x] **Phase 2** — User flows with local mock data
 - [x] **Phase 3** — Supabase schema, RLS, database functions
-- [ ] **Phase 4** — Authentication and trusted-family pairing
+- [x] **Phase 4** — Authentication and trusted-family pairing *(code + automated tests 2026-10-23; manual two-browser test on real Supabase passed, reported by the user 2026-10-23)*
 - [ ] **Phase 5** — Create requests and deliver to the linked family member
 - [ ] **Phase 6** — Approve/reject and real-time status updates
 - [ ] **Phase 7** — Timeout, warnings, accessibility, failure handling
@@ -57,7 +57,7 @@
 | 1 | C `package.json`, `vite.config.ts`, `tsconfig*.json`, `.oxlintrc.json`, `index.html`, `.gitignore`, `.env.example`, `README.md`, `public/favicon.svg`, `src/main.tsx`, `src/App.tsx`, `src/styles/global.css`, `src/types/domain.ts`, `src/mock/mockData.ts`, `src/pages/{ElderHome,CreateRequest,FamilyInbox,RequestDetail,AboutSafety}.tsx`, `src/components/{Layout,StatusBadge,RequestCard}.tsx`, `src/test/setup.ts`, tests; `git init` |
 | 2 | C `src/lib/validation.ts`, `src/lib/requestStatus.ts`, `src/mock/mockStore.ts`, `src/components/{RequestForm,StatusBanner,WarningPanel,FamilyResponse}.tsx`, **`src/config.ts`, `src/hooks/useNow.ts`** (pulled forward from Phase 7: the expired state needs a timeout value and a ticking clock) + tests. M pages, `App.tsx`, `Layout.tsx`, CSS, docs |
 | 3 | C `supabase/migrations/0001_tables.sql`, `0002_rls.sql`, `0003_functions.sql`, `supabase/checks/rls_checks.sql` (not `supabase/tests/`, which the Supabase CLI reserves for pgTAP). M `.env.example`, `README.md`, docs |
-| 4 | C `src/lib/supabaseClient.ts`, `src/auth/AuthProvider.tsx`, `src/pages/{SignIn,SignUp,ChooseRole,PairElder,PairFamily}.tsx`, `src/lib/api/{profile,pairing}.ts`; dep `@supabase/supabase-js`. M `App.tsx`, docs |
+| 4 | C `src/lib/supabaseClient.ts`, `src/auth/AuthProvider.tsx`, `src/pages/{SignIn,SignUp,ChooseRole,PairElder,PairFamily}.tsx`, `src/lib/api/{profile,pairing}.ts`; dep `@supabase/supabase-js`. M `App.tsx`, docs. **As built:** one `SignIn.tsx` with two modes (no `SignUp.tsx`); added `src/lib/api/errors.ts`, `src/auth/authContext.ts`, `src/SignedInApp.tsx`, `src/hooks/useCountdown.ts` (pulled forward from Phase 7), `src/test/fakeSupabase.ts`, `src/SignedInApp.test.tsx`; M `main.tsx`, `Layout.tsx`, `FamilyInbox.tsx`, `StatusBanner.tsx`, CSS, `README.md` |
 | 5 | C `src/lib/api/requests.ts`. M CreateRequest, ElderHome, FamilyInbox, tests, docs |
 | 6 | C `src/hooks/useRequestUpdates.ts`, `supabase/migrations/0004_realtime.sql`. M requests API, RequestDetail, ElderHome, docs |
 | 7 | C `src/hooks/useCountdown.ts`, `src/lib/alertSound.ts`. M `src/config.ts`, WarningPanel, CSS, docs |
@@ -168,7 +168,18 @@ Sources (pages say "Last updated: 22 September 2026"):
 - [x] `supabase/checks/rls_checks.sql`: 36 checks incl. a third unrelated account and a second elder; 36/36 PASS on PGlite with a Supabase stand-in
 - [x] No secret in frontend code, Git history or `.env.example`
 - [x] Remote DB state reported honestly: **not yet applied to a real Supabase project** (user does README steps 1–6)
-- [ ] User applies migrations on their Supabase project and sees 36 × PASS (manual, pending)
+- [x] User applies migrations on their Supabase project and sees 36 × PASS (manual, reported by the user on 2026-10-23)
 
-### Phases 4–9
+### Phase 4
+- [x] Sign up / sign in with Supabase Auth (email + password); general sign-in error; network error shown
+- [x] Role chosen once and stored by `create_my_profile` (not trusted from client state); name 1–40 chars
+- [x] Elder gets a single-use 10-minute code from the database; in-person warning; countdown
+- [x] Family member redeems the code; invalid / used / expired / network messages shown
+- [x] Relationship stored in `family_links`, read through RLS; both sides show who they are linked to
+- [x] Automated: 7 gate tests against an in-memory fake; lint, typecheck, 52/52 tests, build pass
+- [x] Manual: two accounts in two browsers linked on the real Supabase project (README checklist) — user, 2026-10-23
+- [x] Manual: an unrelated third account cannot link with a used code or see the pair — user, 2026-10-23
+- Demo shortcut: none added.
+
+### Phases 5–9
 See "Done when" in `PROMPTS.md`; checklists are added here when each phase starts.

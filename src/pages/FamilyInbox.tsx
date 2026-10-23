@@ -4,12 +4,19 @@ import type { MoneyRequest, Profile } from '../types/domain'
 
 interface FamilyInboxProps {
   familyMember: Profile
+  linkedElder: Profile
   requests: MoneyRequest[]
   nowMs: number
   onOpenRequest: (requestId: string) => void
 }
 
-export function FamilyInbox({ familyMember, requests, nowMs, onOpenRequest }: FamilyInboxProps) {
+export function FamilyInbox({
+  familyMember,
+  linkedElder,
+  requests,
+  nowMs,
+  onOpenRequest,
+}: FamilyInboxProps) {
   const waiting = requests.filter((request) => canBeAnswered(request, nowMs))
   const earlier = requests.filter((request) => !canBeAnswered(request, nowMs))
 
@@ -17,8 +24,9 @@ export function FamilyInbox({ familyMember, requests, nowMs, onOpenRequest }: Fa
     <section aria-labelledby="inbox-title">
       <h1 id="inbox-title">Requests to confirm</h1>
       <p>
-        Signed in as <strong>{familyMember.displayName}</strong>. Only requests from your linked
-        family member appear here.
+        Signed in as <strong>{familyMember.displayName}</strong>, linked with{' '}
+        <strong>{linkedElder.displayName}</strong>. Only requests from your linked family member
+        appear here.
       </p>
 
       <h2>Waiting for your answer</h2>

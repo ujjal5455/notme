@@ -3,10 +3,10 @@ import type { UserRole } from '../types/domain'
 import type { View, ViewName } from '../types/view'
 
 interface LayoutProps {
-  role: UserRole
-  currentView: ViewName
-  onSwitchRole: (role: UserRole) => void
-  onNavigate: (view: View) => void
+  /** Who is signed in. Leave out on the sign-in screen. */
+  account?: { displayName: string | null; onSignOut: () => void }
+  /** The menu. Only shown once the person is signed in, has a role and is linked. */
+  nav?: { role: UserRole; currentView: ViewName; onNavigate: (view: View) => void }
   children: ReactNode
 }
 
@@ -23,7 +23,7 @@ const NAV_ITEMS: Record<UserRole, { label: string; view: View }[]> = {
 }
 
 /** The frame around every page: header, demo notice, navigation, then the page itself. */
-export function Layout({ role, currentView, onSwitchRole, onNavigate, children }: LayoutProps) {
+export function Layout({ account, nav, children }: LayoutProps) {
   return (
     <>
       <a className="skip-link" href="#main">
@@ -31,42 +31,36 @@ export function Layout({ role, currentView, onSwitchRole, onNavigate, children }
       </a>
       <header className="app-header">
         <p className="brand">Flod</p>
-        {/* Demo-only switch. Phase 4 replaces it with real sign-in. */}
-        <div className="role-switch" role="group" aria-label="Demo: view the app as">
-          <button
-            type="button"
-            aria-pressed={role === 'elder'}
-            onClick={() => onSwitchRole('elder')}
-          >
-            Elder
-          </button>
-          <button
-            type="button"
-            aria-pressed={role === 'family'}
-            onClick={() => onSwitchRole('family')}
-          >
-            Family
-          </button>
-        </div>
+        {account && (
+          <div className="account">
+            {account.displayName && <span>{account.displayName}</span>}
+            <button type="button" onClick={account.onSignOut}>
+              Sign out
+            </button>
+          </div>
+        )}
       </header>
 
       <p className="demo-banner">
-        <strong>Local demo:</strong> made-up data, kept only in this browser tab. It is not shared
-        with other devices and disappears when you reload. No real money is sent.
+        <strong>Demo prototype:</strong> made-up people and data only. No real money is sent.
+        Accounts and family links are saved online; money requests still stay in this browser tab
+        until the next phase.
       </p>
 
-      <nav className="app-nav" aria-label="Main">
-        {NAV_ITEMS[role].map((item) => (
-          <button
-            key={item.label}
-            type="button"
-            aria-current={currentView === item.view.name ? 'page' : undefined}
-            onClick={() => onNavigate(item.view)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </nav>
+      {nav && (
+        <nav className="app-nav" aria-label="Main">
+          {NAV_ITEMS[nav.role].map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              aria-current={nav.currentView === item.view.name ? 'page' : undefined}
+              onClick={() => nav.onNavigate(item.view)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+      )}
 
       <main id="main" tabIndex={-1}>
         {children}

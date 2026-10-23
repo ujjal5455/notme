@@ -6,7 +6,7 @@
 
 ## Current status
 
-Phase 3 of 9. The app UI (Phase 2): the full request flow (create → confirm/reject → status, plus timeout) works **with local mock data only**. Everything lives in one browser tab's memory: it is **not shared between devices or tabs** and is lost on reload. Use the Elder/Family switch to play both people. Phase 3 added the database design (`supabase/`), but **the app does not use it yet**; it is connected in Phases 4–6. See [`docs/PLAN.md`](docs/PLAN.md) for progress and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md) for what was done and tested.
+Phase 4 of 9. **Real accounts and pairing** use Supabase: sign up / sign in, choose a role (elder or family member) once, and link an elder with one family member through a one-time code shown in person. **Money requests are still local mock data** (Phase 2): they live only in the browser tab that created them, are **not sent to the other device yet**, and are lost on reload. Phase 5 moves them into the database. See [`docs/PLAN.md`](docs/PLAN.md) for progress and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md) for what was done and tested.
 
 ## Run it locally
 
@@ -17,7 +17,24 @@ npm install
 npm run dev
 ```
 
-Open the URL Vite prints (usually http://localhost:5173). Use the **Elder / Family** switch in the header to see both sides; this switch is demo-only and will be replaced by real sign-in in Phase 4.
+You need a Supabase project and a filled-in `.env.local` first (see **Database setup** below). Without them the page stays blank and the browser console says which setting is missing. Restart `npm run dev` after changing `.env.local`.
+
+Open the URL Vite prints (usually http://localhost:5173).
+
+### Manual test: two accounts, two browsers (Phase 4)
+
+Use two separate browser sessions, for example a normal window and a private/incognito window, because each one remembers its own sign-in. Use made-up emails only.
+
+1. **Window A:** *New here? Create a demo account* → `elder1@example.com` → choose **The elder**, name `Asha (demo)` → **Show a pairing code**. You should see an 8-character code, the "Only in person" warning and a 10-minute countdown.
+2. **Window B:** create `family1@example.com` → choose **A family member**, name `Ravi (demo)`.
+3. Window B: type `zzzz-zzzz` → **Link** → expect "That code is not valid…".
+4. Window B: type the code from window A (lower case or with a dash is fine) → **Link** → expect the inbox "Requests to confirm … linked with Asha (demo)".
+5. Window A: **My family member has entered the code** → expect "Hello, Asha (demo)" and Ravi's name.
+6. **Third account:** sign out in window B, create `stranger@example.com` as a family member, type the same code again → expect "That code has already been used…". The stranger sees no inbox and no names.
+7. Reload both windows → each is still signed in and goes straight to its own screen.
+8. In the Supabase **Table Editor**, `family_links` should have exactly one row for this pair.
+
+Leftover test accounts can be deleted in Supabase → **Authentication → Users** (their profile and link rows are deleted with them).
 
 ## Scripts
 
@@ -69,10 +86,13 @@ With Docker Desktop running, `npx supabase init` then `npx supabase start` start
 - A compromised family-member account could approve requests. Out of scope for this prototype.
 - "Expired" is worked out from `expires_at`; the database does not run a background job to mark requests expired (it simply refuses late answers).
 - This is not production-ready: no monitoring, backups policy, audit log, or abuse protection.
+- Anyone who can open the app can create an account (sign-up is open and emails are not verified). Fine for synthetic demo accounts only.
+- A family member may be linked to several elders in the database, but the screens show only the first linked elder's name.
+- The elder's pairing screen does not notice the new link by itself; the elder taps **My family member has entered the code**.
 
 ## Environment variables
 
-`.env.example` lists the two public placeholders; copy it to `.env.local` (ignored by Git) once the app connects to Supabase in Phase 4. Never put a Supabase secret / service-role key in this project.
+`.env.example` lists the two public placeholders; copy it to `.env.local` (ignored by Git) and fill them in. The app reads them since Phase 4. Never put a Supabase secret / service-role key in this project.
 
 ## Learning
 

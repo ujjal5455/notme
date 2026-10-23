@@ -1,91 +1,177 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { REQUEST_TIMEOUT_SECONDS } from './config'
+import { AuthProvider } from './auth/AuthProvider'
+import { fake } from './test/fakeSupabase'
+
+// Every file that imports the real Supabase client gets the in-memory fake instead.
+vi.mock('./lib/supabaseClient', async () => ({
+  supabase: (await import('./test/fakeSupabase')).fake.supabase,
+}))
 
 function click(name: string | RegExp) {
   fireEvent.click(screen.getByRole('button', { name }))
 }
 
-/** As the elder: fill in and send a request for ₹2,500. */
-function createRequestAsElder() {
-  click(/check a money request/i)
-  fireEvent.change(screen.getByLabelText(/amount in rupees/i), { target: { value: '2500' } })
-  fireEvent.change(screen.getByLabelText(/who are you paying/i), {
-    target: { value: 'test.shop@demo-upi' },
-  })
-  click(/send to family/i)
+function type(label: string | RegExp, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } })
 }
 
-afterEach(() => {
-  vi.useRealTimers()
+function renderApp() {
+  render(
+    <AuthProvider>
+      <App />
+    </AuthProvider>,
+  )
+}
+
+async function signUp(email: string) {
+  await screen.findByRole('heading', { name: 'Sign in' })
+  click(/create a demo account/i)
+  type('Email', email)
+  type('Password', 'demo-pass-1')
+  click('Create account')
+}
+
+async function signIn(email: string, password = 'demo-pass-1') {
+  await screen.findByRole('heading', { name: 'Sign in' })
+  type('Email', email)
+  type('Password', password)
+  click('Sign in')
+}
+
+async function chooseRole(role: 'elder' | 'family', name: string) {
+  await screen.findByRole('heading', { name: /who will use this phone/i })
+  fireEvent.click(screen.getByLabelText(role === 'elder' ? /the elder/i : /a family member/i))
+  type(/your name/i, name)
+  click('Continue')
+}
+
+/** Elder signs up, chooses the role and shows a code. Returns nothing; the code is P38S-P4XS. */
+async function elderShowsCode() {
+  await signUp('elder1@example.com')
+  await chooseRole('elder', '  Asha (demo) ')
+  await screen.findByRole('heading', { name: /link your family member/i })
+  click('Show a pairing code')
+  await screen.findByText('P38S-P4XS')
+}
+
+beforeEach(() => {
+  fake.reset()
 })
 
-describe('App (Phase 2 local mock flow)', () => {
-  it('starts on the elder home screen and says the demo is local only', () => {
-    render(<App />)
-    expect(screen.getByRole('heading', { level: 1, name: /hello, asha/i })).toBeInTheDocument()
-    expect(screen.getByText(/not shared with other devices/i)).toBeInTheDocument()
-    expect(screen.getByText(/no real money is sent/i)).toBeInTheDocument()
+describe('App gate (Phase 4: sign-in, role, pairing)', () => {
+  it('starts on the sign-in screen with a made-up-data reminder', async () => {
+    renderApp()
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
+    expect(screen.getByText(/use a made-up email/i)).toBeInTheDocument()
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
   })
 
-  it('elder creates → family confirms → elder sees "confirmed"', () => {
-    render(<App />)
-    createRequestAsElder()
-    expect(screen.getByRole('heading', { level: 1, name: '₹2,500' })).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent(/waiting for ravi/i)
+  it('links an elder and a family member with a one-time code', async () => {
+    renderApp()
 
-    click('Family') // same request, now seen by the family member
-    click('Confirm request')
-    expect(screen.getByText(/you confirmed this request/i)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Confirm request' })).not.toBeInTheDocument()
+    // Elder: sign up → role → code with an in-person warning and a countdown.
+    await elderShowsCode()
+    expect(screen.getByText('P38S-P4XS')).toHaveAttribute('aria-label', 'Pairing code: P 3 8 S P 4 X S')
+    expect(screen.getByText(/only in person/i)).toBeInTheDocument()
+    expect(screen.getByText('Expires in 10:00')).toBeInTheDocument()
 
-    click('Elder')
-    expect(screen.getByRole('status')).toHaveTextContent(/ravi \(demo\) confirmed these details/i)
+    // Checking before the family member has typed it keeps the code on screen.
+    click('My family member has entered the code')
+    expect(await screen.findByRole('alert')).toHaveTextContent(/not linked yet/i)
+    expect(screen.getByText('P38S-P4XS')).toBeInTheDocument()
+
+    // Family member (same device here; two devices in real life).
+    click('Sign out')
+    await signUp('family1@example.com')
+    await chooseRole('family', 'Ravi (demo)')
+    await screen.findByRole('heading', { name: /link with your elder/i })
+
+    type(/pairing code/i, 'abc')
+    click('Link')
+    expect(screen.getByRole('alert')).toHaveTextContent(/8 letters and numbers/i)
+
+    type(/pairing code/i, 'zzzz-zzzz')
+    click('Link')
+    expect(await screen.findByRole('alert')).toHaveTextContent('That code is not valid. Check it and try again.')
+
+    type(/pairing code/i, 'p38s-p4xs') // lower case and a dash are fine
+    click('Link')
+    await screen.findByRole('heading', { name: /requests to confirm/i })
+    expect(screen.getByText('Asha (demo)')).toBeInTheDocument() // name was trimmed by the "database"
+
+    // Elder signs in again and goes straight to the home screen, linked with Ravi.
+    click('Sign out')
+    await signIn('elder1@example.com')
+    expect(await screen.findByRole('heading', { name: /hello, asha \(demo\)/i })).toBeInTheDocument()
+    expect(screen.getByText('Ravi (demo)')).toBeInTheDocument()
   })
 
-  it('elder creates → family rejects → elder sees the pause warning', () => {
-    render(<App />)
-    createRequestAsElder()
-    click('Family')
-    click('Reject request')
-    click('Elder')
-    expect(screen.getByRole('alert')).toHaveTextContent(/pause\. this request has not been confirmed/i)
+  it('refuses a code that has already been used', async () => {
+    renderApp()
+    await elderShowsCode()
+    click('Sign out')
+    await signUp('family1@example.com')
+    await chooseRole('family', 'Ravi (demo)')
+    await screen.findByRole('heading', { name: /link with your elder/i })
+    type(/pairing code/i, 'P38SP4XS')
+    click('Link')
+    await screen.findByRole('heading', { name: /requests to confirm/i })
+
+    // A different, unrelated account tries the same code.
+    click('Sign out')
+    await signUp('stranger@example.com')
+    await chooseRole('family', 'Stranger (demo)')
+    await screen.findByRole('heading', { name: /link with your elder/i })
+    type(/pairing code/i, 'P38SP4XS')
+    click('Link')
+    expect(await screen.findByRole('alert')).toHaveTextContent('That code has already been used. Ask for a new one.')
   })
 
-  it('new request appears in the family inbox under "Waiting for your answer"', () => {
-    render(<App />)
-    createRequestAsElder()
-    click('Back')
-    click('Family')
-    const waitingHeading = screen.getByRole('heading', { name: /waiting for your answer/i })
-    expect(waitingHeading).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /₹2,500/ })).toBeInTheDocument()
+  it('asks for a role before saving', async () => {
+    renderApp()
+    await signUp('elder1@example.com')
+    await screen.findByRole('heading', { name: /who will use this phone/i })
+    type(/your name/i, 'Asha (demo)')
+    click('Continue')
+    expect(screen.getByRole('alert')).toHaveTextContent('Choose who will use this phone.')
   })
 
-  it('a request nobody answers turns into an "unconfirmed" warning', () => {
-    vi.useFakeTimers()
-    render(<App />)
-    createRequestAsElder()
-    act(() => {
-      vi.advanceTimersByTime((REQUEST_TIMEOUT_SECONDS + 1) * 1000)
-    })
-    const warning = screen.getByRole('alert')
-    expect(warning).toHaveTextContent(/has not been confirmed/i)
-    expect(warning).toHaveTextContent(/may be busy or offline/i)
-
-    // The family member can no longer answer it.
-    click('Family')
-    expect(screen.queryByRole('button', { name: 'Confirm request' })).not.toBeInTheDocument()
-    expect(screen.getByText(/expired before it was answered/i)).toBeInTheDocument()
+  it('gives a general message for a wrong password', async () => {
+    renderApp()
+    await signUp('elder1@example.com')
+    await screen.findByRole('heading', { name: /who will use this phone/i })
+    click('Sign out')
+    await signIn('elder1@example.com', 'wrong-password')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Email or password is not right. Please try again.')
   })
 
-  it('shows helpful text for an invalid amount and stays on the form', () => {
-    render(<App />)
-    click(/check a money request/i)
-    fireEvent.change(screen.getByLabelText(/amount in rupees/i), { target: { value: '-50' } })
-    click(/send to family/i)
-    expect(screen.getByText(/whole rupees and numbers only/i)).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /check a money request/i })).toBeInTheDocument()
+  it('cannot create a second account with the same email', async () => {
+    renderApp()
+    await signUp('elder1@example.com')
+    await screen.findByRole('heading', { name: /who will use this phone/i })
+    click('Sign out')
+    await signUp('elder1@example.com')
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not create the account/i)
+  })
+
+  it('shows a connection error with "Try again" instead of a blank screen', async () => {
+    renderApp()
+    await elderShowsCode()
+    click('Sign out')
+
+    fake.state.networkDown = true
+    await signIn('elder1@example.com')
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not connect/i)
+
+    fake.state.networkDown = false
+    await signIn('elder1@example.com')
+    await screen.findByRole('heading', { name: /link your family member/i })
+
+    // The network drops while the account is loading again.
+    fake.state.networkDown = true
+    click('Show a pairing code')
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not connect/i)
   })
 })
