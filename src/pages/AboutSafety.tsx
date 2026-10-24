@@ -1,18 +1,19 @@
 export function AboutSafety() {
   return (
     <section aria-labelledby="about-title">
-      <h1 id="about-title">How Flod helps you check before you pay</h1>
+      <h1 id="about-title">How Notme helps you check before you pay</h1>
       <p>
-        Scammers can copy a family member&apos;s voice and ask you for money urgently. Flod does
-        not try to detect fake voices. Instead, it lets you check the exact request with your
-        family member through a separate app they already set up with you.
+        Scammers can copy a family member&apos;s voice and ask you for money urgently. Notme does
+        not try to detect fake voices, and it does not ask you to judge the call. You type only the
+        amount you are being asked for, and the family member you linked with in advance checks it
+        for you: they call you on a number you already trust, then confirm or reject it.
       </p>
 
       <h2>What the answers mean</h2>
       <ul className="plain-list">
         <li>
-          <strong>Confirmed:</strong> your family member agreed with these exact details. It does
-          not prove the person you are paying is safe.
+          <strong>Confirmed:</strong> your family member knows about this payment and agrees with
+          the amount. It does not prove that paying is safe.
         </li>
         <li>
           <strong>Rejected:</strong> your family member says this request is not genuine. Do not
@@ -24,7 +25,7 @@ export function AboutSafety() {
         </li>
       </ul>
 
-      <h2>What Flod does not do</h2>
+      <h2>What Notme does not do</h2>
       <ul className="plain-list">
         <li>It never sends real money.</li>
         <li>It does not listen to or block phone calls.</li>

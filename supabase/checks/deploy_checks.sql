@@ -1,5 +1,5 @@
 -- =====================================================================
--- Flod: pre-demo / pre-deployment configuration check (READ-ONLY)
+-- Notme: pre-demo / pre-deployment configuration check (READ-ONLY)
 -- Paste into Supabase → SQL Editor → Run. It changes nothing.
 -- Every row should say PASS. Complements rls_checks.sql, which tests
 -- behaviour by acting as different users; this one inspects settings.
@@ -15,7 +15,7 @@ fns(name, definer) as (
          ('respond_to_request', true), ('server_now', false)
 ),
 checks(check_name, ok, detail) as (
-  -- 1. Row Level Security is on for every Flod table.
+  -- 1. Row Level Security is on for every Notme table.
   select 'RLS enabled: ' || t.name,
          coalesce(c.relrowsecurity, false),
          case when c.oid is null then 'table missing' else 'rls = ' || c.relrowsecurity end
@@ -79,6 +79,25 @@ checks(check_name, ok, detail) as (
          exists (select 1 from pg_publication_tables
                  where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'money_requests'),
          'publication supabase_realtime'
+
+  union all
+  -- 8. Amount-only requests (0006): no payee or note is stored ...
+  select 'amount-only: money_requests has no recipient or note column',
+         not exists (select 1 from information_schema.columns
+                     where table_schema = 'public' and table_name = 'money_requests'
+                       and column_name in ('recipient', 'note')),
+         coalesce((select string_agg(column_name, ', ') from information_schema.columns
+                   where table_schema = 'public' and table_name = 'money_requests'
+                     and column_name in ('recipient', 'note')), 'none')
+
+  union all
+  -- 9. ... and the old create_money_request that accepted them is gone.
+  select 'amount-only: old create_money_request(amount, recipient, note, timeout) removed',
+         to_regprocedure('public.create_money_request(integer, text, text, integer)') is null,
+         'versions found: ' || coalesce((select string_agg(pg_get_function_identity_arguments(p.oid), ' | ')
+                                         from pg_proc p
+                                         where p.proname = 'create_money_request'
+                                           and p.pronamespace = 'public'::regnamespace), 'none')
 )
 select case when ok then 'PASS' else 'FAIL' end as result, check_name, detail
 from checks

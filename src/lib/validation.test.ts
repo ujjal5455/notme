@@ -1,20 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { validateRequestForm, type RequestFormValues } from './validation'
-
-const valid: RequestFormValues = { amount: '2500', recipient: 'shop@demo-upi', note: '' }
+import { validateRequestForm } from './validation'
 
 function amountError(amount: string) {
-  const result = validateRequestForm({ ...valid, amount })
+  const result = validateRequestForm({ amount })
   return result.ok ? null : result.errors.amount
 }
 
 describe('validateRequestForm', () => {
-  it('accepts a valid request and tidies the values', () => {
-    const result = validateRequestForm({ amount: ' 25,000 ', recipient: '  shop@demo-upi ', note: ' ' })
-    expect(result).toEqual({
-      ok: true,
-      data: { amountInr: 25000, recipient: 'shop@demo-upi', note: null },
-    })
+  it('accepts a valid amount and tidies it', () => {
+    const result = validateRequestForm({ amount: ' 25,000 ' })
+    expect(result).toEqual({ ok: true, data: { amountInr: 25000 } })
   })
 
   it.each([
@@ -35,23 +30,8 @@ describe('validateRequestForm', () => {
     expect(amountError('100000')).toBeNull()
   })
 
-  it('requires a recipient of sensible length', () => {
-    const empty = validateRequestForm({ ...valid, recipient: '' })
-    const short = validateRequestForm({ ...valid, recipient: 'ab' })
-    const long = validateRequestForm({ ...valid, recipient: 'x'.repeat(101) })
-    expect(empty.ok ? null : empty.errors.recipient).toMatch(/who you are being asked to pay/i)
-    expect(short.ok ? null : short.errors.recipient).toMatch(/at least 3/i)
-    expect(long.ok ? null : long.errors.recipient).toMatch(/under 100/i)
-  })
-
-  it('limits the optional note to 200 characters', () => {
-    const result = validateRequestForm({ ...valid, note: 'x'.repeat(201) })
-    expect(result.ok ? null : result.errors.note).toMatch(/under 200/i)
-  })
-
-  it('reports every problem at once', () => {
-    const result = validateRequestForm({ amount: '', recipient: '', note: '' })
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(Object.keys(result.errors).sort()).toEqual(['amount', 'recipient'])
+  it('produces only the amount: nothing else is ever sent', () => {
+    const result = validateRequestForm({ amount: '2500' })
+    expect(result.ok && Object.keys(result.data)).toEqual(['amountInr'])
   })
 })

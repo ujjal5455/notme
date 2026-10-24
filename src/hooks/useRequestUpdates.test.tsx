@@ -33,7 +33,7 @@ describe('useRequestUpdates', () => {
     await waitFor(() => expect(result.current.status).toBe('live'))
     expect(onPoll).toHaveBeenCalledTimes(1) // the catch-up
 
-    await fake.supabase.rpc('create_money_request', { p_amount_inr: 700, p_recipient: 'shop@demo-upi' })
+    await fake.supabase.rpc('create_money_request', { p_amount_inr: 700 })
     expect(onChange).toHaveBeenCalledTimes(1)
     expect(onChange.mock.calls[0][0]).toMatchObject({ amountInr: 700, status: 'pending' }) // camelCase
   })

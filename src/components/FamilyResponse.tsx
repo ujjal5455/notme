@@ -42,8 +42,8 @@ export function FamilyResponse({ status, elderName, onRespond }: FamilyResponseP
       <div className="family-response">
         <h2>Is this request genuine?</h2>
         <p>
-          Only confirm if you know about this payment and the amount and recipient are exactly
-          right.
+          Before you answer, call {elderName} on a number you already trust. Only confirm if you
+          know about this payment and the amount is exactly right.
         </p>
         <button
           type="button"

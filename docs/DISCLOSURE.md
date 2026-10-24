@@ -31,6 +31,8 @@ This document therefore does **not** claim to follow a required format; it is si
 
 **What actually happened (updated onsite, 2026-10-24):** the team decided not to start from scratch. The whole Flod project, including its git history, was copied into the Notme folder, and Notme is being built **on top of the Flod code**. So everything in Notme up to the git tag **`pre-event-end`** (commit `f710e6f`), plus commit `2f3f631` (two pre-event docs committed late, labelled `(pre-event)`), is **pre-event work from Flod**. Every later commit is labelled `(onsite)`; `git log --oneline pre-event-end..HEAD` lists them. Planned onsite transformation: amount-only alerts (no payee), an Android app (Capacitor), push notifications (Firebase Cloud Messaging), a server-side alert function (Supabase Edge Function), and testing on Android phones. This file is updated as that work lands.
 
+**Onsite work landed so far:** Phase 0 plan and docs (`c44e52b`); Phase 1 rename to Notme and amount-only requests, including the new migration `0006_amount_only.sql` (0001–0005 are unchanged pre-event files).
+
 ## 2. Third-party software
 
 Versions as installed (`node_modules/*/package.json`). All are open source under permissive licences.

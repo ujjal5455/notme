@@ -8,8 +8,6 @@ function request(id: string, createdAt: string, status: MoneyRequest['status'] =
     elderId: 'elder-1',
     familyId: 'family-1',
     amountInr: 100,
-    recipient: 'shop@demo-upi',
-    note: null,
     status,
     createdAt,
     expiresAt: '2026-10-23T10:01:00.000Z',

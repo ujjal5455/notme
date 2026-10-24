@@ -13,13 +13,13 @@ export function CreateRequest({ familyMember, onSubmit, onCancel }: CreateReques
 
   return (
     <section aria-labelledby="create-title">
-      <h1 id="create-title">Check a money request</h1>
+      <h1 id="create-title">Send a money alert</h1>
       <p>
-        Enter exactly what you are being asked to pay. <strong>{familyName}</strong> will see these
-        details and confirm or reject them.
+        Type the amount you are being asked to pay. <strong>{familyName}</strong> will see it and
+        confirm or reject it. Do not pay until they answer.
       </p>
       <p className="notice">
-        Demo: use made-up details only. Flod never sends money. {familyName} has{' '}
+        Demo: use made-up amounts only. Notme never sends money. {familyName} has{' '}
         {REQUEST_TIMEOUT_SECONDS} seconds to answer. That is kept short for the demo; it is not a
         recommended real-life waiting time.
       </p>

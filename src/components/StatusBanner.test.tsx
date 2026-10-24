@@ -10,11 +10,11 @@ describe('StatusBanner (elder view)', () => {
     expect(screen.getByRole('status')).toHaveTextContent(/waiting for ravi.*do not pay yet/i)
   })
 
-  it('approved: confirms details without claiming the payment is safe', () => {
+  it('approved: confirms the request without claiming the payment is safe', () => {
     render(<StatusBanner status="approved" familyName={family} />)
     const banner = screen.getByRole('status')
-    expect(banner).toHaveTextContent(/confirmed these details/i)
-    expect(banner).toHaveTextContent(/does not prove the recipient is safe/i)
+    expect(banner).toHaveTextContent(/confirmed this request/i)
+    expect(banner).toHaveTextContent(/does not prove that paying is safe/i)
   })
 
   it('rejected: shows the prominent pause warning', () => {

@@ -12,8 +12,6 @@ const row = {
   elder_id: 'elder-1',
   family_id: 'family-1',
   amount_inr: 2500,
-  recipient: 'shop@demo-upi',
-  note: null,
   status: 'pending',
   created_at: '2026-10-23T10:00:00.000Z',
   expires_at: '2026-10-23T10:01:00.000Z',
@@ -35,13 +33,11 @@ beforeEach(() => {
 })
 
 describe('what the browser sends', () => {
-  it('create request: only amount, recipient, note and timeout', async () => {
+  it('create request: only the amount and the timeout', async () => {
     rpc.mockResolvedValue({ data: row, error: null })
-    await createMoneyRequest({ amountInr: 2500, recipient: 'shop@demo-upi', note: null }, 60)
+    await createMoneyRequest({ amountInr: 2500 }, 60)
     expect(rpc).toHaveBeenCalledWith('create_money_request', {
       p_amount_inr: 2500,
-      p_recipient: 'shop@demo-upi',
-      p_note: null,
       p_timeout_seconds: 60,
     })
   })
@@ -86,7 +82,7 @@ describe('what the browser does with refusals', () => {
 
   it('turns a network failure into a clear next step', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'TypeError: Failed to fetch' } })
-    await expect(createMoneyRequest({ amountInr: 1, recipient: 'abc', note: null }, 60)).rejects.toThrow(
+    await expect(createMoneyRequest({ amountInr: 1 }, 60)).rejects.toThrow(
       'Could not connect. Check your internet connection and try again.',
     )
   })

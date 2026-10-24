@@ -26,8 +26,6 @@ export function createRequest(
     elderId: link.elderId,
     familyId: link.familyId,
     amountInr: input.amountInr,
-    recipient: input.recipient,
-    note: input.note,
     status: 'pending', // always starts pending — the elder cannot choose this
     createdAt: new Date(nowMs).toISOString(),
     expiresAt: new Date(nowMs + REQUEST_TIMEOUT_SECONDS * 1000).toISOString(),

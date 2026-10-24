@@ -18,7 +18,7 @@ This guide teaches you to rebuild Flod **from an empty folder without AI**. It w
 | 10 | Timeout, visual/audio warnings and failure handling | Phase 7 §10 + failure-mode table | ✅ |
 | 11 | Tests, debugging, deployment and environment variables | §11 "Tests and scripts" (Phase 1); **§11 (complete)** near the end | ✅ (hosting itself: Phase 9) |
 | 12 | Diagrams, glossary, common errors, exercises, rebuild checklist, judge Q&A | **§12** near the end; each phase's exercises and self-test | ✅ |
-| 13 | **Notme:** what changed from Flod and why | **Part B** §13 (at the very end) | ⏳ outline (onsite Phase 0); filled in Phase 1 |
+| 13 | **Notme:** what changed from Flod and why | **Part B** §13 (at the very end) | ✅ onsite Phase 1 |
 | 14 | Capacitor: a web app inside an Android app | Part B §14 | ⏳ Phase 2 |
 | 15 | Push notifications: FCM, tokens, channels, permission | Part B §15 | ⏳ Phase 3 |
 | 16 | Supabase Edge Functions and server-only secrets | Part B §16 | ⏳ Phase 4 |
@@ -1445,7 +1445,86 @@ Elder taps Send alert
 The four request states (`pending`, `approved`, `rejected`, `expired`) and every safety rule from Part A stay the same.
 
 ## 13. What changed from Flod and why  *(onsite Phase 1)*
-Planned: the amount-only decision and its trade-off (the family member no longer sees the payee, so their job is to call the elder, not to check a UPI ID); `0006_amount_only.sql` (ALTER TABLE, DROP COLUMN, replacing a function whose argument list changes); how removing one field ripples through types, validation, screens, mocks and tests; why validation stays in two places; the new Supabase project and why Flod's is kept as the backup.
+
+### The decision and its trade-off
+Flod asked the elder for three things: amount, who to pay (UPI ID or name) and an optional note. In a real scam call the elder is panicking, and every extra box is a chance to give up and just pay. Notme asks for **one thing: the amount**.
+
+**Trade-off, said honestly:** the family member no longer sees *who* the money would go to. Their job changes from "check this UPI ID" to "**call the elder on a number you already trust**". The family screen now says exactly that.
+
+**Analogy:** Flod was a form at a bank counter. Notme is a panic button with a number on it.
+
+### Changing a database that already exists: `0006_amount_only.sql`
+Migrations are **history**: 0001–0005 stay exactly as they were (they're pre-event work), and a new file describes the change. Anyone can replay 0001 → 0006 and end up with the same database.
+
+```sql
+-- 1. Remove the old function first (its body still mentions the old columns).
+drop function if exists public.create_money_request(integer, text, text, integer);
+
+-- 2. Remove the columns; their CHECK constraints disappear with them.
+alter table public.money_requests drop column if exists recipient;
+alter table public.money_requests drop column if exists note;
+
+-- 3. Create the new, shorter function.
+create or replace function public.create_money_request(p_amount_inr integer, p_timeout_seconds integer default 60) ...
+```
+
+**Why step 1 can't be skipped:** Postgres identifies a function by its name **plus its argument types**. `create or replace` with a different argument list doesn't replace the old function; it adds a second one beside it (an *overload*). The old 4-argument version would still accept a recipient and a note. So we drop it by its full signature.
+
+**`if exists` makes it re-runnable:** running 0006 twice does nothing harmful the second time. The same idea appears in every Flod migration.
+
+**Grants are per signature:** the new function is a new object, so `revoke … from anon` and `grant … to authenticated` have to be written again for `(integer, integer)`.
+
+### How removing one field ripples through the app
+TypeScript does the searching for you. Remove `recipient` and `note` from the `MoneyRequest` and `NewRequestInput` types in `src/types/domain.ts`, run `npm run typecheck`, and every file that still uses them turns into an error. Fix them one by one:
+
+| Layer | File(s) | Change |
+|---|---|---|
+| Types | `src/types/domain.ts` | `NewRequestInput` is now `{ amountInr }` |
+| Browser validation | `src/lib/validation.ts` | only the amount rules are left |
+| Form | `src/components/RequestForm.tsx` | one big input; button "Send alert to family" |
+| Talking to the database | `src/lib/api/requests.ts` | sends `p_amount_inr` and `p_timeout_seconds` only |
+| Screens | `RequestCard`, `RequestDetail`, `StatusBanner`, `FamilyResponse`, `CreateRequest`, `ElderHome`, `AboutSafety` | no payee or note; new wording |
+| Test doubles | `src/test/fakeSupabase.ts`, `src/mock/*` | the same rules as 0006 |
+| Database checks | `supabase/checks/rls_checks.sql` (37 checks), `deploy_checks.sql` (28 rows) | new calls; "old version is gone"; "no recipient/note column" |
+
+**Validation still lives in two places.** The browser checks the amount so the elder gets a friendly message instantly. The database checks it again because anyone can skip the browser and call the API directly. The two must agree: 1 to 1,00,000 whole rupees.
+
+### Tracing one example: Asha types "25,000"
+1. `RequestForm` keeps `{ amount: '25,000' }` in state (a controlled input).
+2. **Send alert to family** → `validateRequestForm({ amount: '25,000' })` strips the comma → `{ ok: true, data: { amountInr: 25000 } }`.
+3. `createMoneyRequest({ amountInr: 25000 }, 60)` → `supabase.rpc('create_money_request', { p_amount_inr: 25000, p_timeout_seconds: 60 })`.
+4. In Postgres, the new function checks that Asha is signed in, is an elder and is linked, and that 25000 is between 1 and 100000. It then copies Ravi's id from `family_links` and inserts a `pending` row with `expires_at = now() + 60 s`.
+5. The row comes back → `toMoneyRequest` turns `amount_inr` into `amountInr` → the detail screen shows "₹25,000 · The amount you are being asked to pay · Waiting for Ravi (demo)".
+6. Ravi's screen gets the row through Realtime (unchanged from Flod) and shows "Asha (demo) is being asked to pay this amount" and "Before you answer, call Asha (demo) on a number you already trust."
+
+### Why a new Supabase project
+0006 deletes columns that the Flod web app needs. Running it on the Flod project would break the backup demo. A second free project costs nothing, and 0001–0006 recreate everything in a few minutes.
+
+### Phase 1 (onsite) file-by-file
+| File | What it does / why | Inputs → outputs | Common mistake | Practice (no AI) |
+|---|---|---|---|---|
+| `supabase/migrations/0006_amount_only.sql` | Turns Flod's schema into Notme's: drops two columns, swaps the function | run in the SQL Editor → changed tables and functions | Writing `create or replace` with new arguments and forgetting to drop the old signature, so both versions exist | Write a query that lists every version of `create_money_request` (hint: `pg_proc`, `pg_get_function_identity_arguments`) |
+| `src/lib/validation.ts` | Friendly, instant amount checks | `{ amount: string }` → `{ ok, data }` or `{ ok, errors }` | Using `Number('')`: it gives `0`, not an error | Add a rule that rejects amounts with leading zeros like `007` |
+| `src/components/RequestForm.tsx` | The one-field alert form | typed text → calls `onSubmit({ amountInr })` | Forgetting `event.preventDefault()`: the page reloads | Change the button text while sending to "Alerting…" and update the test |
+| `src/lib/api/requests.ts` | The only place that calls `create_money_request` | `NewRequestInput` → saved `MoneyRequest` | Sending a parameter the database function doesn't have: PostgREST then can't find the function | Read `api.test.ts` and explain why it checks the exact parameters sent |
+| `src/pages/RequestDetail.tsx` | One request, seen by the elder or the family member | request + viewer role → screen | Showing the same sentence to both roles | Add the elder's name to the family member's countdown label |
+
+### How to run and test Phase 1
+- Automated: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`.
+- Database (on the **new** project): README "Database setup" steps 1–7, then `rls_checks.sql` (37 × PASS) and `deploy_checks.sql` (28 × PASS).
+- Manual: README "Manual test: amount-only alert on the new Notme project (onsite Phase 1)".
+
+### Phase 1 (onsite) exercises (no AI; answers aren't included)
+1. **Change the demo cap** from ₹1,00,000 to ₹50,000. Find the **two** places that must change (one in the browser, one in the database) and the tests that will fail. Write the SQL as a new practice migration file, run it on a throwaway project, and don't commit it.
+2. Without running anything, explain what would happen if 0006 used only `create or replace` and skipped the `drop function`. Which `rls_checks.sql` row would catch it?
+3. Put the note back, **optional and only on the family member's screen**. List every file from the ripple table you would have to touch, in the order you'd touch them.
+
+### Phase 1 (onsite) self-test
+1. Why is 0006 a new file instead of an edit to 0001 and 0003?
+2. What does Postgres use to tell two functions with the same name apart?
+3. Why must the amount limit be checked in the database even though the form already checks it?
+4. What does the family member now do instead of checking the payee?
+5. Why does Notme need a different Supabase project from Flod?
 
 ## 14. Capacitor: a web app inside an Android app  *(onsite Phase 2)*
 Planned: WebView; what Capacitor adds; `capacitor.config.ts` and `webDir`; the loop `npm run build` → `npx cap sync` → run from Android Studio; the `android/` folder; USB debugging; Logcat and `chrome://inspect`; what works the same as in a browser (localStorage sessions, Realtime, Web Audio) and what doesn't.
@@ -1480,3 +1559,6 @@ Planned: an Android failure-mode table from real tests (app closed, phone locked
 - **Notification channel:** an Android category of notifications with its own importance and sound settings.
 - **Edge Function:** a small server-side program hosted by Supabase.
 - **Secret (server-only):** a key that must never be in the app, because anyone can unpack an APK and read it.
+- **Function signature:** a function's name plus its argument types, e.g. `create_money_request(integer, integer)`. Postgres treats different signatures as different functions.
+- **Overload:** a second function with the same name but different arguments.
+- **`DROP COLUMN`:** removes a column (and its data and checks) from an existing table.

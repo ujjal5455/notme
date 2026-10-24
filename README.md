@@ -1,16 +1,22 @@
-# Flod
+# Notme
 
-**Pause before you pay.** AI voice cloning lets scammers sound like a family member and push an elder to send money urgently. Flod does not try to detect fake voices. Instead, the elder sends the exact request (amount and recipient) to a family member they linked in advance, who confirms or rejects it on their own device.
+**Pause before you pay.** AI voice cloning lets scammers sound like a family member and push an elder to send money urgently. Notme does not try to detect fake voices, and it does not ask the panicking elder to judge the call. The elder types **only the amount** they are being asked for and sends an alert to the family member they linked with in person beforehand. That calm family member calls them on a trusted number and confirms or rejects it on their own device.
 
 > **Hackathon prototype.** Uses made-up demo data only. It never sends real money and is not an emergency or payment-safety guarantee.
 
 ## Current status
 
-Phase 6 of 9. **The core flow works end to end** on two devices: accounts and in-person pairing (Phase 4); the elder's request is saved in Supabase and appears in the linked family member's inbox (Phase 5); the family member **confirms or rejects**, and the elder's screen **updates by itself** through Supabase Realtime, with polling every 4 seconds as the fallback (Phase 6). Phase 7 adds a countdown corrected to the **database's clock**, a large **Pause** alert on the elder's home screen when a request is rejected or runs out of time, a **best-effort beep** (the visual warning never depends on it), focus handling for keyboard and screen-reader users, and failure tests. Requires `0004_realtime.sql` and `0005_server_time.sql` to be run on your project. Phase 8 reviewed everything against the brief, added tests (88 automated) and wrote [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md); [`docs/LEARNING_GUIDE.md`](docs/LEARNING_GUIDE.md) now covers rebuilding Flod from an empty folder. Phase 9 (deployment readiness): [`docs/DEPLOY.md`](docs/DEPLOY.md) explains how to put it online (Netlify Drop recommended), how to test it from a phone on mobile data, a backup plan and a final checklist; [`docs/DISCLOSURE.md`](docs/DISCLOSURE.md) separates pre-event work, third-party software and AI assistance. **Not yet deployed**: no live URL has been checked, so none is listed here. See [`docs/PLAN.md`](docs/PLAN.md) for progress and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md) for what was done and tested.
+Built at **Hackyard Build 2026** on top of the team's **pre-event** web prototype *Flod* (disclosed; see [`docs/DISCLOSURE.md`](docs/DISCLOSURE.md)). Git tag `pre-event-end` marks the last pre-event commit; `git log --oneline pre-event-end..HEAD` lists the onsite work.
+
+- **From Flod (pre-event):** accounts and in-person pairing, requests saved in Supabase and delivered only to the linked family member, Confirm/Reject through a database function, live updates (Realtime, polling fallback), a countdown corrected to the database's clock, Pause warnings and a best-effort beep, accessibility work, automated tests and docs.
+- **Onsite Phase 1:** renamed to Notme; requests are **amount-only** (no payee/UPI ID, no note) in the form, the screens and the database (`0006_amount_only.sql`).
+- **Not built yet:** the Android app (Capacitor), push notifications to the family phone, and the server-side alert function. Until then Notme runs as a web app, and the family member sees a request only while the app is open.
+
+See [`docs/PLAN.md`](docs/PLAN.md) for progress and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md) for what was done and tested.
 
 ## Run it locally
 
-Requirements: Node.js 20+ and npm.
+Requirements: Node.js 22+ (needed by Capacitor 8 from Phase 2) and npm.
 
 ```bash
 npm install
@@ -36,12 +42,22 @@ Use two separate browser sessions, for example a normal window and a private/inc
 
 Leftover test accounts can be deleted in Supabase → **Authentication → Users** (their profile, link and request rows are deleted with them).
 
+### Manual test: amount-only alert on the new Notme project (onsite Phase 1)
+
+Do this after **Database setup** below, on the **new** Notme Supabase project, with a freshly linked pair (Phase 4 test, steps 1–5).
+
+1. Window A (Asha): **Send a money alert** → the form has **one field only**, the amount. Leave it empty → **Send alert to family** → "Enter the amount you are being asked to pay." Type `10.50` → "Use whole rupees…". Type `25,000` → **Send alert to family**.
+2. Window A shows "₹25,000 … The amount you are being asked to pay … Waiting for Ravi (demo) to confirm". No payee or note appears anywhere.
+3. Window B (Ravi): ₹25,000 appears by itself. Open it: "Asha (demo) is being asked to pay this amount", the countdown, and "Before you answer, call Asha (demo) on a number you already trust…". **Confirm request** → window A shows "Ravi (demo) confirmed this request… It does not prove that paying is safe".
+4. Send another amount; Ravi **Reject request** → window A shows the large **Pause** warning.
+5. Supabase **Table Editor → money_requests**: there is no `recipient` or `note` column.
+
 ### Manual test: a request reaches the family member (Phase 5)
 
-Use the linked pair from the Phase 4 test (window A = elder, window B = family member).
+Use the linked pair from the Phase 4 test (window A = elder, window B = family member). *(Updated onsite for amount-only requests.)*
 
-1. Window A: **Check a money request** → amount `2500`, recipient `test.shop@demo-upi`, note `Caller said it is urgent` → **Send to family to confirm**. The button says *Sending…*, then you see "₹2,500 … Waiting for Ravi (demo) to confirm".
-2. Window B: **Check for new requests** (or switch away from the tab and back) → ₹2,500 appears under "Waiting for your answer". Open it: amount, recipient, note and Asha's name match exactly. *(Since Phase 6 the request appears by itself and Confirm/Reject buttons are shown.)*
+1. Window A: **Send a money alert** → amount `2500` → **Send alert to family**. The button says *Sending…*, then you see "₹2,500 … Waiting for Ravi (demo) to confirm".
+2. Window B: **Check for new requests** (or switch away from the tab and back) → ₹2,500 appears under "Waiting for your answer". Open it: the amount and Asha's name match exactly. *(Since Phase 6 the request appears by itself and Confirm/Reject buttons are shown.)*
 3. Reload window A → **Home** still lists the ₹2,500 request.
 4. Wait 60 seconds → both windows show the request as **Unconfirmed / expired** (worked out from the deadline the database set).
 5. **Third account:** sign in as `stranger@example.com`. It is not linked, so the app stops at the pairing screen and never shows any request. That the *database* also refuses (not just the screen) is proven by `rls_checks.sql` → "visibility: stranger C sees 0 requests", which passed on your project.
@@ -52,11 +68,11 @@ Use the linked pair from the Phase 4 test (window A = elder, window B = family m
 
 First run `supabase/migrations/0004_realtime.sql` in the SQL Editor (Database setup, step 3). Put windows A (Asha) and B (Ravi) **side by side**. Don't press Refresh during this test.
 
-1. Window A: send ₹2,500 to `test.shop@demo-upi` and stay on its "Waiting for Ravi" screen.
+1. Window A: send an alert for ₹2,500 and stay on its "Waiting for Ravi" screen.
 2. Window B: within a second or two, ₹2,500 appears under "Waiting for your answer" **by itself**.
 3. Window B: open it → **Reject request** → button says *Sending…*, then "You rejected this request…".
 4. Window A: **by itself**, the large **Pause** warning appears.
-5. Repeat with a new request and **Confirm request** → window A shows "Ravi (demo) confirmed these details" and still says it does not prove the recipient is safe.
+5. Repeat with a new request and **Confirm request** → window A shows "Ravi (demo) confirmed this request" and still says it does not prove that paying is safe.
 6. **Duplicate answer:** with live updates working, an answered request's buttons disappear everywhere within a second, so a second answer is hard to produce by hand. The database's refusal is proven by `rls_checks.sql` → "respond: a second answer is refused" and "an answer after the deadline is refused"; the screen's handling (message + correcting itself) by the automated test "a second answer from an out-of-date screen is refused".
 7. **Late answer:** send a request and let 60 seconds pass without answering → both windows show **Unconfirmed**; Ravi gets no buttons.
 8. **Polling fallback:** in Supabase → **Database → Publications** (labels may vary), remove `money_requests` from `supabase_realtime`, then reload both windows → a notice says "Live updates are not connected. Checking for updates every few seconds." Answers still arrive, within about 4 seconds. Run `0004_realtime.sql` again to put it back.
@@ -90,8 +106,8 @@ First run `supabase/migrations/0005_server_time.sql` in the SQL Editor. Windows 
 
 ### What the tests cover
 
-- **Automated (no Supabase needed):** `npm test` runs 88 tests in 14 files: validation and status rules, components, the whole app flow (sign-in, pairing, create, deliver, answer, live/polling/offline, wrong clock, warnings) against an in-memory fake Supabase (`src/test/fakeSupabase.ts`), and what the browser sends to the database (`src/lib/api/api.test.ts`).
-- **Database security (needs your Supabase project):** `supabase/checks/rls_checks.sql` in the SQL Editor: 36 checks.
+- **Automated (no Supabase needed):** `npm test` runs the tests in 14 files (count in `docs/BUILD_LOG.md`): validation and status rules, components, the whole app flow (sign-in, pairing, create, deliver, answer, live/polling/offline, wrong clock, warnings) against an in-memory fake Supabase (`src/test/fakeSupabase.ts`), and what the browser sends to the database (`src/lib/api/api.test.ts`).
+- **Database security (needs your Supabase project):** `supabase/checks/rls_checks.sql` in the SQL Editor: 37 checks.
 - **Manual (two real browsers):** the "Manual test" checklists above for Phases 4–7.
 
 The fake proves the React code reacts correctly to each answer; only `rls_checks.sql` and the manual tests prove the real backend gives those answers.
@@ -107,23 +123,27 @@ The database lives in a free [Supabase](https://supabase.com) project. Everythin
 | `supabase/migrations/0003_functions.sql` | The five functions that are the **only** way to write data |
 | `supabase/migrations/0004_realtime.sql` | Turns on live updates (Supabase Realtime) for `money_requests` |
 | `supabase/migrations/0005_server_time.sql` | `server_now()`: lets the app correct countdowns for a phone with a wrong clock |
-| `supabase/checks/rls_checks.sql` | 36 automatic security checks; prints PASS/FAIL per check |
-| `supabase/checks/deploy_checks.sql` | Read-only settings check before a demo (RLS on, no anon access, read-only tables, function rights, Realtime): 26 × PASS |
+| `supabase/migrations/0006_amount_only.sql` | **Onsite:** removes the recipient and note columns; `create_money_request` now takes only the amount (+ demo timeout) |
+| `supabase/checks/rls_checks.sql` | 37 automatic security checks; prints PASS/FAIL per check |
+| `supabase/checks/deploy_checks.sql` | Read-only settings check before a demo (RLS on, no anon access, read-only tables, function rights, Realtime, amount-only schema): 28 × PASS |
+
+0001–0005 come from the pre-event Flod prototype unchanged; 0006 onwards were written onsite.
 
 ### Step by step
 
 Dashboard labels may differ slightly between Supabase versions.
 
-1. **Create the project.** Sign in at supabase.com → **New project**. Pick a region near your users (for India, Mumbai). Save the database password in a password manager; you will not need it for this app, and it must never go into this repo.
+1. **Create a NEW project for Notme.** Keep the old Flod project as it is: 0006 removes columns the Flod web app needs, and Flod is the backup demo. Sign in at supabase.com → **New project** (name it e.g. `notme`). Pick a region near your users (for India, Mumbai). Save the database password in a password manager; you will not need it for this app, and it must never go into this repo.
 2. **Email sign-in for the demo.** **Authentication → Sign In / Providers → Email**: keep Email enabled and turn **off "Confirm email"**. *Why:* Supabase's built-in email sender allows only a few emails per hour, which breaks a live demo. *Trade-off:* anyone can sign up with any address. Acceptable for synthetic demo accounts only; documented as a limitation.
-3. **Apply the migrations, in order.** **SQL Editor → New query** → paste the whole of `0001_tables.sql` → **Run** → expect "Success. No rows returned". Repeat with `0002_rls.sql`, then `0003_functions.sql`, `0004_realtime.sql` and `0005_server_time.sql`. The editor may warn about "destructive operations" (`revoke`, `drop policy if exists`); that is expected. Each file is safe to run again if something went wrong halfway.
-4. **Run the security checks.** New query → paste `supabase/checks/rls_checks.sql` → **Run**. Every row should say **PASS** (36 rows). The script creates four throwaway `@example.test` users and deletes them again. If any row says FAIL, stop and investigate before continuing.
+3. **Apply the migrations, in order.** **SQL Editor → New query** → paste the whole of `0001_tables.sql` → **Run** → expect "Success. No rows returned". Repeat with `0002_rls.sql`, then `0003_functions.sql`, `0004_realtime.sql`, `0005_server_time.sql` and `0006_amount_only.sql`. The editor may warn about "destructive operations" (`revoke`, `drop policy if exists`, `drop column`); that is expected. Each file is safe to run again if something went wrong halfway.
+4. **Run the security checks.** New query → paste `supabase/checks/rls_checks.sql` → **Run**. Every row should say **PASS** (37 rows). Then run `supabase/checks/deploy_checks.sql`: 28 × **PASS**. The script creates four throwaway `@example.test` users and deletes them again. If any row says FAIL, stop and investigate before continuing.
 5. **Double-check in the dashboard.** **Table Editor**: each of the four tables should show RLS as enabled. **Advisors → Security Advisor**: there should be no errors about these tables.
 6. **Copy the two public settings** (needed from Phase 4). **Project Settings → API Keys** (and **Data API** for the URL): copy the **Project URL** and the **publishable key** (or the legacy **anon public** key). Then:
    ```bash
    cp .env.example .env.local
    ```
-   and paste the two values into `.env.local`. Never copy the **secret** / **service_role** key: it bypasses all security and would be visible to anyone if put in browser code.
+   and paste the two values into `.env.local`. Never copy the **secret** / **service_role** key: it bypasses all security and would be visible to anyone if put in browser code. If `.env.local` still holds the **Flod** project's values (copied from the pre-event folder), replace them with the new Notme project's values, then restart `npm run dev`.
+7. **If sending says it can't find `create_money_request`:** the API's list of functions is out of date after 0006. Wait a minute and try again, or run `notify pgrst, 'reload schema';` in the SQL Editor.
 
 ### Optional: run the same database locally (offline backup)
 
@@ -131,6 +151,7 @@ With Docker Desktop running, `npx supabase init` then `npx supabase start` start
 
 ## Prototype limitations (database)
 
+- By design the family member sees only the **amount**, not who the money would go to. Their job is to reach the elder on a trusted number, not to judge a payee.
 - Pairing codes have no attempt limit (rate limiting); an 8-character code from 32 characters that expires in 10 minutes makes guessing impractical but not impossible.
 - There is no "unlink" or "change family member" flow; changing a link needs a database admin.
 - No limit on how many requests an elder can send.
@@ -145,7 +166,7 @@ With Docker Desktop running, `npx supabase init` then `npx supabase start` start
 - Countdowns and the "Unconfirmed" display are corrected by the database's clock (`server_now()`, measured once when the app opens, accurate to about half the network round trip). If `0005_server_time.sql` wasn't run or the check fails, the phone's own clock is used. Either way **the database decides** whether an answer is late.
 - The beep is best effort: browsers block sound until the person has tapped the page, phones may be muted, and people may not hear it. The visual warning is always shown.
 - Warnings are announced (alert + beep) only for requests that turn into a warning **while the app is open**. A request that expired while the app was closed shows its "Unconfirmed" badge on reopening, without a new alert.
-- Nothing runs while the app is closed: no push notifications or SMS. The elder must have the app open to see the answer.
+- Nothing runs while the app is closed: no push notifications or SMS **yet** (push to the family phone is planned for onsite Phases 3–4). The elder must have the app open to see the answer.
 
 ## Environment variables
 
@@ -153,8 +174,8 @@ With Docker Desktop running, `npx supabase init` then `npx supabase start` start
 
 ## Learning
 
-[`docs/LEARNING_GUIDE.md`](docs/LEARNING_GUIDE.md) teaches how to rebuild this app from an empty folder: a reading path in topic order, every major file explained, diagrams, common errors, a rebuild checklist and judge Q&A. [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) has 90-second and 3-minute demo walkthroughs, and [`docs/PRESENTING.md`](docs/PRESENTING.md) has tips for presenting them calmly.
+[`docs/LEARNING_GUIDE.md`](docs/LEARNING_GUIDE.md) teaches how to rebuild this app from an empty folder: Part A covers the pre-event web app (reading path, every major file, diagrams, common errors, rebuild checklist, judge Q&A); Part B covers what was added onsite. [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) has 90-second and 3-minute demo walkthroughs (still describing the Flod version; updated in onsite Phase 6), and [`docs/PRESENTING.md`](docs/PRESENTING.md) has tips for presenting them calmly.
 
 ## This is a prototype
 
-Flod is a hackathon prototype built with made-up data. It never moves real money, does not listen to or block phone calls, and is **not** an emergency service or a payment-safety guarantee. A confirmation means the linked family member agreed with the request's details, nothing more.
+Notme is a hackathon prototype built with made-up data. It never moves real money, does not listen to or block phone calls, and is **not** an emergency service or a payment-safety guarantee. A confirmation means the linked family member knows about the request and agrees with the amount, nothing more.

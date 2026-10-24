@@ -47,8 +47,10 @@ export function RequestDetail({
   return (
     <section aria-labelledby="detail-title">
       <h1 id="detail-title">{formatInr(request.amountInr)}</h1>
-      <p className="detail-recipient">
-        to <strong>{request.recipient}</strong>
+      <p className="detail-subtitle">
+        {viewerRole === 'family'
+          ? `${elderName} is being asked to pay this amount.`
+          : 'The amount you are being asked to pay.'}
       </p>
       <StatusBadge status={status} />
       {status === 'pending' && (
@@ -70,8 +72,6 @@ export function RequestDetail({
       )}
 
       <dl className="details">
-        <dt>What they were told</dt>
-        <dd>{request.note ?? 'No note'}</dd>
         <dt>From</dt>
         <dd>{elderName}</dd>
         <dt>Sent to</dt>

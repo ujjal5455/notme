@@ -37,7 +37,7 @@ export function PairFamily({ onLinked }: PairFamilyProps) {
     <section aria-labelledby="pair-family-title">
       <h1 id="pair-family-title">Link with your elder</h1>
       <p>
-        Ask your elder to open Flod and tap <strong>Show a pairing code</strong>. Type the code you
+        Ask your elder to open Notme and tap <strong>Show a pairing code</strong>. Type the code you
         see on their screen while you are together.
       </p>
       <p className="notice">

@@ -10,8 +10,6 @@ function makeRequest(overrides: Partial<MoneyRequest> = {}): MoneyRequest {
     elderId: 'e1',
     familyId: 'f1',
     amountInr: 500,
-    recipient: 'shop@demo-upi',
-    note: null,
     status: 'pending',
     createdAt: '2026-10-21T10:00:00.000Z',
     expiresAt: '2026-10-21T10:01:00.000Z',

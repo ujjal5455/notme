@@ -14,7 +14,6 @@ export function RequestCard({ request, nowMs, onOpen }: RequestCardProps) {
   return (
     <button type="button" className="request-card" onClick={() => onOpen(request.id)}>
       <span className="request-card-amount">{formatInr(request.amountInr)}</span>
-      <span className="request-card-recipient">to {request.recipient}</span>
       <StatusBadge status={getEffectiveStatus(request, nowMs)} />
       <span className="request-card-time">Sent {formatDateTime(request.createdAt)}</span>
     </button>

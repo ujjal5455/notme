@@ -32,12 +32,11 @@ async function renderAsFamily() {
   return view
 }
 
-/** As the elder: fill in and send a request for ₹2,500. */
-function fillAndSend(amount = '2500', recipient = ' test.shop@demo-upi ') {
-  click(/check a money request/i)
+/** As the elder: send an alert for ₹2,500 (the amount is the only field). */
+function fillAndSend(amount = '2500') {
+  click(/send a money alert/i)
   fireEvent.change(screen.getByLabelText(/amount in rupees/i), { target: { value: amount } })
-  fireEvent.change(screen.getByLabelText(/who are you paying/i), { target: { value: recipient } })
-  click(/send to family/i)
+  click(/send alert to family/i)
 }
 
 beforeEach(async () => {
@@ -66,7 +65,8 @@ describe('SignedInApp (Phase 5: requests saved in Supabase)', () => {
     await renderAsElder()
     fillAndSend()
     expect(await screen.findByRole('heading', { level: 1, name: '₹2,500' })).toBeInTheDocument()
-    expect(screen.getByText('test.shop@demo-upi')).toBeInTheDocument() // trimmed by the "database"
+    expect(screen.getByText(/the amount you are being asked to pay/i)).toBeInTheDocument()
+    expect(screen.queryByText(/demo-upi|recipient|no note/i)).not.toBeInTheDocument() // amount only
     expect(screen.getByRole('status')).toHaveTextContent(/waiting for ravi \(demo\) to confirm/i)
     expect(screen.queryByRole('button', { name: 'Confirm request' })).not.toBeInTheDocument()
   })
@@ -82,7 +82,8 @@ describe('SignedInApp (Phase 5: requests saved in Supabase)', () => {
     const waiting = screen.getByRole('heading', { name: /waiting for your answer/i }).nextElementSibling as HTMLElement
     expect(within(waiting).getByRole('button', { name: /₹2,500/ })).toBeInTheDocument()
     click(/₹2,500/)
-    expect(screen.getByText('test.shop@demo-upi')).toBeInTheDocument()
+    expect(screen.getByText('Asha (demo) is being asked to pay this amount.')).toBeInTheDocument()
+    expect(screen.getByText(/call asha \(demo\) on a number you already trust/i)).toBeInTheDocument()
     expect(screen.getByText('Asha (demo)')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Confirm request' })).toBeInTheDocument()
     familyView.unmount()
@@ -98,7 +99,7 @@ describe('SignedInApp (Phase 5: requests saved in Supabase)', () => {
 
     // Asha sends a request while Ravi's screen is open.
     await fake.signInAs('elder1@example.com')
-    await fake.supabase.rpc('create_money_request', { p_amount_inr: 900, p_recipient: 'shop@demo-upi' })
+    await fake.supabase.rpc('create_money_request', { p_amount_inr: 900 })
     await fake.signInAs('family1@example.com')
 
     click('Check for new requests')
@@ -111,8 +112,6 @@ describe('SignedInApp (Phase 5: requests saved in Supabase)', () => {
       elder_id: asha.id,
       family_id: ravi.id,
       amount_inr: 5000,
-      recipient: 'late.reply@demo-upi',
-      note: null,
       status: 'pending',
       created_at: new Date(Date.now() - 120_000).toISOString(),
       expires_at: new Date(Date.now() - 60_000).toISOString(),
@@ -128,11 +127,11 @@ describe('SignedInApp (Phase 5: requests saved in Supabase)', () => {
     fake.state.networkDown = true
     fillAndSend()
     expect(await screen.findByRole('alert')).toHaveTextContent(/could not connect/i)
-    expect(screen.getByRole('heading', { name: /check a money request/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /send a money alert/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/amount in rupees/i)).toHaveValue('2500')
 
     fake.state.networkDown = false
-    click(/send to family/i)
+    click(/send alert to family/i)
     expect(await screen.findByRole('heading', { level: 1, name: '₹2,500' })).toBeInTheDocument()
   })
 
@@ -154,17 +153,14 @@ describe('SignedInApp (Phase 5: requests saved in Supabase)', () => {
     await renderAsElder()
     fillAndSend('-50')
     expect(screen.getByText(/whole rupees and numbers only/i)).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /check a money request/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /send a money alert/i })).toBeInTheDocument()
   })
 })
 
 /** As Asha, save a ₹2,500 request straight in the fake (as if sent earlier). Returns its id. */
 async function savedRequest(): Promise<string> {
   await fake.signInAs('elder1@example.com')
-  const { data } = await fake.supabase.rpc('create_money_request', {
-    p_amount_inr: 2500,
-    p_recipient: 'test.shop@demo-upi',
-  })
+  const { data } = await fake.supabase.rpc('create_money_request', { p_amount_inr: 2500 })
   return String((data as { id: string }).id)
 }
 
@@ -197,8 +193,8 @@ describe('SignedInApp (Phase 6: answers and live updates)', () => {
     click(/₹2,500/)
     await fake.signInAs('family1@example.com')
     await fake.supabase.rpc('respond_to_request', { p_request_id: id, p_decision: 'approved' })
-    expect(await screen.findByText(/ravi \(demo\) confirmed these details/i)).toBeInTheDocument()
-    expect(screen.getByText(/does not prove the recipient is safe/i)).toBeInTheDocument()
+    expect(await screen.findByText(/ravi \(demo\) confirmed this request/i)).toBeInTheDocument()
+    expect(screen.getByText(/does not prove that paying is safe/i)).toBeInTheDocument()
   })
 
   it('a second answer from an out-of-date screen is refused, and the screen catches up', async () => {
@@ -230,8 +226,6 @@ function insertRequest(fields: Record<string, unknown>) {
     elder_id: asha.id,
     family_id: ravi.id,
     amount_inr: 5000,
-    recipient: 'shop@demo-upi',
-    note: null,
     status: 'pending',
     created_at: new Date(now - 10_000).toISOString(),
     expires_at: new Date(now + 50_000).toISOString(),

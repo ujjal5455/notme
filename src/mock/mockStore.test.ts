@@ -3,7 +3,7 @@ import { REQUEST_TIMEOUT_SECONDS } from '../config'
 import { createRequest, respondToRequest } from './mockStore'
 
 const link = { elderId: 'elder-1', familyId: 'family-1' }
-const input = { amountInr: 2500, recipient: 'shop@demo-upi', note: null }
+const input = { amountInr: 2500 }
 const t0 = Date.parse('2026-10-21T10:00:00.000Z')
 
 function oneRequest() {

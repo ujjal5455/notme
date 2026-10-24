@@ -380,3 +380,33 @@ Phase 3's last manual check is now ticked in `docs/PLAN.md`. Correction to the r
 **Not done:** no feature code; nothing installed. Plan **awaiting the user's approval**.
 
 **AI assistance disclosure:** plan, brief, prompts and doc updates written by the AI assistant under the user's direction.
+
+**Approval:** the user approved the plan on 2026-10-24 by asking to start Phase 1; Phase 0 docs committed as `c44e52b` `(onsite)`.
+
+---
+
+## 2026-10-24 · Phase 1 (Notme) — Rename to Notme; amount-only requests `[onsite]`
+
+**Done**
+- New `supabase/migrations/0006_amount_only.sql`: drops the old `create_money_request(integer, text, text, integer)`, drops `money_requests.recipient` and `.note`, creates `create_money_request(p_amount_inr, p_timeout_seconds)` with the same checks as before minus recipient/note, and grants it to `authenticated` only. RLS, `respond_to_request`, Realtime and `server_now` unchanged. 0001–0005 not edited.
+- `supabase/checks/rls_checks.sql`: calls updated to the new signature; new check "requests: old recipient/note version is gone" (37 checks); test schema renamed `flod_test` → `notme_test`. `deploy_checks.sql`: two new rows (no recipient/note column; old function removed), 28 rows in total.
+- App: `NewRequestInput` is `{ amountInr }`; validation, API call, fake Supabase, mock store/data and every screen are amount-only. The form has one large field and the button **Send alert to family**; Home's button is **Send a money alert**. The family member's screen says "Asha (demo) is being asked to pay this amount" and "Before you answer, call Asha (demo) on a number you already trust…". The approval banner now says a confirmation "does not prove that paying is safe".
+- Renamed Flod → Notme in `package.json`/`package-lock.json` (name), `index.html` (title, description), header brand, Safety page, pairing text, CSS comment, README. Migration headers 0001–0005 still say "Flod" on purpose (unchanged pre-event files).
+- README: new status section (pre-event vs onsite), Node 22+, a new Phase 1 manual test, older manual tests reworded for amount-only, setup on a **new** Supabase project with 0006, 37/28 check counts, `.env.local` warning (it still holds the Flod project's values), schema-cache tip, new limitation (family member sees only the amount).
+- LEARNING_GUIDE Part B §13 written (decision and trade-off, migration explained, ripple table, two-place validation, traced example, file-by-file, exercises, self-test) plus 3 glossary terms.
+
+**Checks run by the AI assistant (2026-10-24, about 22:00 IST)**
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | ✅ |
+| `npm run lint` | ✅ |
+| `npm test` | ✅ 14 files, **87/87** (88 before: 2 recipient/note validation tests removed; 1 "only the amount is produced" and 1 "form has one field only" added) |
+| `npm run build` | ✅ |
+| Leftover search in `src/`, `index.html`, `package.json` for recipient / note / Flod | ✅ only a test assertion that checks they are absent |
+| Bundle scan for `service_role` / `sb_secret_` / JWT-shaped strings | ✅ no keys; the one text match is supabase-js's own code checking key prefixes |
+| Screens at 375 px in the browser pane, using the in-memory test fake (temporary `zz.vite.config.ts` + `zz-fake-client.ts`, deleted afterwards) | ✅ one-field form; sent ₹25,000 → "The amount you are being asked to pay", countdown, waiting banner; family view with the call-first text and both buttons; no horizontal scroll; no console errors |
+
+**Not run:** the SQL (0006 and both check scripts) has **not been executed anywhere yet**. A local PGlite check was proposed and declined by the user, so the first run is the user's, on the new Notme Supabase project (README steps 1–7). The manual two-browser test on that project is also the user's.
+
+**AI assistance disclosure:** migration, code, test and doc changes written by the AI assistant under the user's direction; awaiting the user's Supabase setup and manual test.

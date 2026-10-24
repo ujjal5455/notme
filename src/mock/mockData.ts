@@ -1,4 +1,4 @@
-// SYNTHETIC demo data. No real people, numbers or UPI IDs.
+// SYNTHETIC demo data. No real people or numbers.
 // Used only by tests since Phase 5; the app loads real rows from Supabase.
 import type { MoneyRequest, Profile } from '../types/domain'
 
@@ -31,8 +31,6 @@ export const mockRequests: MoneyRequest[] = [
     elderId: mockElder.id,
     familyId: mockFamily.id,
     amountInr: 25000,
-    recipient: 'hospital.desk@demo-upi',
-    note: 'Caller said Ravi needs money for a hospital bill',
     status: 'pending',
     createdAt: minutes(-1),
     expiresAt: minutes(9),
@@ -43,8 +41,6 @@ export const mockRequests: MoneyRequest[] = [
     elderId: mockElder.id,
     familyId: mockFamily.id,
     amountInr: 1500,
-    recipient: 'electricity.bill@demo-upi',
-    note: null,
     status: 'approved',
     createdAt: minutes(-60),
     expiresAt: minutes(-50),
@@ -55,8 +51,6 @@ export const mockRequests: MoneyRequest[] = [
     elderId: mockElder.id,
     familyId: mockFamily.id,
     amountInr: 80000,
-    recipient: 'unknown.agent@demo-upi',
-    note: 'Urgent bail money, do not tell anyone',
     status: 'rejected',
     createdAt: minutes(-180),
     expiresAt: minutes(-170),
@@ -67,8 +61,6 @@ export const mockRequests: MoneyRequest[] = [
     elderId: mockElder.id,
     familyId: mockFamily.id,
     amountInr: 5000,
-    recipient: 'travel.refund@demo-upi',
-    note: null,
     // Saved as pending, but its deadline has passed, so the app SHOWS it as expired.
     status: 'pending',
     createdAt: minutes(-1440),

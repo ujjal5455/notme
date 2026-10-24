@@ -51,7 +51,7 @@ export function ElderHome({
       </p>
 
       <button type="button" className="button-primary" onClick={onCreateRequest}>
-        Check a money request
+        Send a money alert
       </button>
 
       <h2>Your requests</h2>

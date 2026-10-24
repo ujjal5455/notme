@@ -8,8 +8,6 @@ export interface MoneyRequestRow {
   elder_id: string
   family_id: string
   amount_inr: number
-  recipient: string
-  note: string | null
   status: StoredStatus
   created_at: string
   expires_at: string
@@ -22,8 +20,6 @@ export function toMoneyRequest(row: MoneyRequestRow): MoneyRequest {
     elderId: row.elder_id,
     familyId: row.family_id,
     amountInr: row.amount_inr,
-    recipient: row.recipient,
-    note: row.note,
     status: row.status,
     createdAt: row.created_at,
     expiresAt: row.expires_at,
@@ -32,9 +28,9 @@ export function toMoneyRequest(row: MoneyRequestRow): MoneyRequest {
 }
 
 /**
- * Elder: create a request. Only what the elder chose is sent.
- * The database decides who receives it (from family_links), the status
- * (pending) and every timestamp (its own clock).
+ * Elder: create a request. Only what the elder chose (the amount) is sent,
+ * plus the demo timeout. The database decides who receives it (from
+ * family_links), the status (pending) and every timestamp (its own clock).
  */
 export async function createMoneyRequest(
   input: NewRequestInput,
@@ -42,8 +38,6 @@ export async function createMoneyRequest(
 ): Promise<MoneyRequest> {
   const { data, error } = await supabase.rpc('create_money_request', {
     p_amount_inr: input.amountInr,
-    p_recipient: input.recipient,
-    p_note: input.note,
     p_timeout_seconds: timeoutSeconds,
   })
   if (error) throw new Error(friendlyMessage(error.message))

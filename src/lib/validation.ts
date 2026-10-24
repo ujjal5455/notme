@@ -1,20 +1,15 @@
 // Checks the elder's form before a request is created.
-// The same limits will be enforced AGAIN by the database in Phase 3,
-// because anything checked only in the browser can be bypassed.
+// The same limits are enforced AGAIN by the database (create_money_request,
+// migration 0006), because anything checked only in the browser can be bypassed.
 import type { NewRequestInput } from '../types/domain'
 import { formatInr } from './format'
 
 export const MIN_AMOUNT_INR = 1
 export const MAX_AMOUNT_INR = 100_000 // demo cap
-export const RECIPIENT_MIN_LENGTH = 3
-export const RECIPIENT_MAX_LENGTH = 100
-export const NOTE_MAX_LENGTH = 200
 
 /** Raw text exactly as typed into the form. Inputs always give us strings. */
 export interface RequestFormValues {
   amount: string
-  recipient: string
-  note: string
 }
 
 /** One message per field that has a problem; fields without problems are absent. */
@@ -43,22 +38,8 @@ export function validateRequestForm(values: RequestFormValues): ValidationResult
     }
   }
 
-  const recipient = values.recipient.trim()
-  if (recipient === '') {
-    errors.recipient = 'Enter who you are being asked to pay (a UPI ID or name).'
-  } else if (recipient.length < RECIPIENT_MIN_LENGTH) {
-    errors.recipient = `Enter at least ${RECIPIENT_MIN_LENGTH} characters.`
-  } else if (recipient.length > RECIPIENT_MAX_LENGTH) {
-    errors.recipient = `Keep this under ${RECIPIENT_MAX_LENGTH} characters.`
-  }
-
-  const note = values.note.trim()
-  if (note.length > NOTE_MAX_LENGTH) {
-    errors.note = `Keep the note under ${NOTE_MAX_LENGTH} characters.`
-  }
-
   if (Object.keys(errors).length > 0) {
     return { ok: false, errors }
   }
-  return { ok: true, data: { amountInr, recipient, note: note === '' ? null : note } }
+  return { ok: true, data: { amountInr } }
 }

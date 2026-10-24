@@ -19,10 +19,10 @@ export function StatusBanner({ status, familyName }: StatusBannerProps) {
     case 'approved':
       return (
         <div className="banner banner-approved" role="status">
-          <p className="banner-title">{familyName} confirmed these details.</p>
+          <p className="banner-title">{familyName} confirmed this request.</p>
           <p>
-            This means {familyName} agrees with the amount and recipient. It does not prove the
-            recipient is safe, so check the UPI ID again before paying.
+            This means {familyName} knows about this payment and agrees with the amount. It does not
+            prove that paying is safe, so check who you are paying before you send money.
           </p>
         </div>
       )

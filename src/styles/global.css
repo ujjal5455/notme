@@ -1,4 +1,4 @@
-/* Flod global styles — mobile-first: base rules target a ~375 px phone,
+/* Notme global styles — mobile-first: base rules target a ~375 px phone,
    the @media rule at the bottom adds space on wider screens. */
 
 :root {
@@ -199,10 +199,6 @@ main:focus {
   font-weight: 800;
 }
 
-.request-card-recipient {
-  overflow-wrap: anywhere;
-}
-
 .request-card-time {
   font-size: 0.9rem;
   color: var(--color-muted);
@@ -353,10 +349,15 @@ textarea[aria-invalid='true'] {
 }
 
 /* ---------- Status banners (Phase 2) ---------- */
-.detail-recipient {
+.detail-subtitle {
   font-size: 1.15rem;
-  overflow-wrap: anywhere;
   margin-bottom: 0.5rem;
+}
+
+/* Onsite (Notme): the alert form has one field, so make it big and easy to read. */
+.amount-input {
+  font-size: 1.75rem;
+  font-weight: 700;
 }
 
 .banner {

@@ -30,7 +30,7 @@ export function Layout({ account, nav, children }: LayoutProps) {
         Skip to main content
       </a>
       <header className="app-header">
-        <p className="brand">Flod</p>
+        <p className="brand">Notme</p>
         {account && (
           <div className="account">
             {account.displayName && <span>{account.displayName}</span>}

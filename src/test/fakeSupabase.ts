@@ -1,6 +1,7 @@
 // A pretend Supabase client for tests: same method names as the real one,
 // but everything lives in memory and answers instantly with { data, error }.
-// It imitates the rules and messages of 0002_rls.sql and 0003_functions.sql,
+// It imitates the rules and messages of 0002_rls.sql, 0003_functions.sql and
+// 0006_amount_only.sql (create_money_request takes only the amount),
 // and Realtime's "only send a change to people who may read the row",
 // closely enough to test the React screens. It does NOT prove the real
 // database is safe: supabase/checks/rls_checks.sql does that.
@@ -159,7 +160,7 @@ function createFake() {
     return tables.profiles.find((p) => p.id === id)?.role
   }
 
-  /** The SQL functions from 0003_functions.sql, with the same messages. */
+  /** The SQL functions from 0003_functions.sql (and 0006 for requests), with the same messages. */
   const functions: Record<string, (args: Record<string, unknown>) => Result> = {
     create_my_profile({ p_role, p_display_name }) {
       const me = uid()
@@ -213,7 +214,7 @@ function createFake() {
       pc.used_by = me
       return ok(link)
     },
-    create_money_request({ p_amount_inr, p_recipient, p_note, p_timeout_seconds }) {
+    create_money_request({ p_amount_inr, p_timeout_seconds }) {
       const me = uid()
       if (!me) return fail('You need to sign in first.')
       if (roleOf(me) !== 'elder') return fail('Only an elder account can create a request.')
@@ -223,10 +224,6 @@ function createFake() {
       if (!Number.isInteger(amount) || amount < 1 || amount > 100000) {
         return fail('Amount must be a whole number of rupees from 1 to 100000.')
       }
-      const recipient = String(p_recipient ?? '').trim()
-      if (recipient.length < 3 || recipient.length > 100) return fail('Recipient must be 3 to 100 characters.')
-      const note = String(p_note ?? '').trim() || null
-      if (note && note.length > 200) return fail('Note must be at most 200 characters.')
       const timeout = Math.max(15, Math.min(600, Number(p_timeout_seconds ?? 60)))
       const now = serverNow()
       const row = {
@@ -234,8 +231,6 @@ function createFake() {
         elder_id: me,
         family_id: link.family_id, // chosen by the "server" from the link, never by the browser
         amount_inr: amount,
-        recipient,
-        note,
         status: 'pending',
         created_at: new Date(now).toISOString(),
         expires_at: new Date(now + timeout * 1000).toISOString(),
