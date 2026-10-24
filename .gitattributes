@@ -1,2 +1,6 @@
 # Store text files with LF line endings for every teammate (Windows, Mac, Linux)
 * text=auto eol=lf
+
+# Except Windows batch files (e.g. android/gradlew.bat): cmd.exe needs CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
