@@ -7,7 +7,7 @@
 
 - [x] **Phase 0** — Onsite plan, rules re-check, docs *(2026-10-24; approved)*
 - [x] **Phase 1** — Rename to Notme; amount-only request (web) *(code + automated checks 2026-10-24, commit `11504dc`; new Supabase project, 37/37 RLS checks, 28/28 deploy checks and the manual two-browser test passed, reported by the user 2026-10-24)*
-- [ ] **Phase 2** — Android app with Capacitor
+- [ ] **Phase 2** — Android app with Capacitor *(in progress 2026-10-24: Capacitor 8.5.3 + `android/` added; debug APK builds with Gradle JDK 21; phone test pending)*
 - [ ] **Phase 3** — Push notifications on the family phone
 - [ ] **Phase 4** — Server sends the alert (Edge Function)
 - [ ] **Phase 5** — Safety and failure handling on real phones
@@ -192,7 +192,9 @@ Sources, both "Last updated: 22 September 2026":
 - [x] Manual two-browser check on the new project (user, 2026-10-24)
 
 ### Phase 2
-- [ ] Capacitor 8 added; `capacitor.config.ts` with `webDir: 'dist'`; `android/` created
+- [x] Capacitor 8 added (8.5.3); `capacitor.config.ts` with `webDir: 'dist'`; `android/` created
+- [x] Debug APK builds with Gradle JDK 21 (JBR 25 fails with Gradle 8.14.3): `app-debug.apk` 4.08 MB
+- [x] App installs and opens on the emulator (sign-in screen clear of the system bars, no errors in logcat)
 - [ ] App runs on a real phone; sign-in persists after closing
 - [ ] Realtime/polling, timeout warning and beep work on the phone
 - [ ] Back button, 200% font, no horizontal scroll checked

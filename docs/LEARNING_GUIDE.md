@@ -19,7 +19,7 @@ This guide teaches you to rebuild Flod **from an empty folder without AI**. It w
 | 11 | Tests, debugging, deployment and environment variables | §11 "Tests and scripts" (Phase 1); **§11 (complete)** near the end | ✅ (hosting itself: Phase 9) |
 | 12 | Diagrams, glossary, common errors, exercises, rebuild checklist, judge Q&A | **§12** near the end; each phase's exercises and self-test | ✅ |
 | 13 | **Notme:** what changed from Flod and why | **Part B** §13 (at the very end) | ✅ onsite Phase 1 |
-| 14 | Capacitor: a web app inside an Android app | Part B §14 | ⏳ Phase 2 |
+| 14 | Capacitor: a web app inside an Android app | Part B §14 | ✅ onsite Phase 2 |
 | 15 | Push notifications: FCM, tokens, channels, permission | Part B §15 | ⏳ Phase 3 |
 | 16 | Supabase Edge Functions and server-only secrets | Part B §16 | ⏳ Phase 4 |
 | 17 | Testing on real Android phones and failure modes | Part B §17 | ⏳ Phase 5 |
@@ -1527,7 +1527,72 @@ TypeScript does the searching for you. Remove `recipient` and `note` from the `M
 5. Why does Notme need a different Supabase project from Flod?
 
 ## 14. Capacitor: a web app inside an Android app  *(onsite Phase 2)*
-Planned: WebView; what Capacitor adds; `capacitor.config.ts` and `webDir`; the loop `npm run build` → `npx cap sync` → run from Android Studio; the `android/` folder; USB debugging; Logcat and `chrome://inspect`; what works the same as in a browser (localStorage sessions, Realtime, Web Audio) and what doesn't.
+
+### The idea
+Every Android phone has a built-in browser engine called the **WebView**: Chrome without the address bar, which apps can put on screen. **Capacitor** makes a small Android app whose only screen is a WebView showing *our* files from `dist/`, plus a bridge so JavaScript can later call phone features (Phase 3 uses that for push notifications).
+
+**Analogy:** the React app is a painting; Capacitor is the frame that lets you hang it on the Android wall. The painting doesn't change, but now it can sit on the home screen with an icon.
+
+```
+ src/ (React + TS) ──npm run build──► dist/ (HTML, JS, CSS)
+                                         │  npx cap sync android  (copies it)
+                                         ▼
+ android/app/src/main/assets/public/  ──Gradle (Android Studio)──► app-debug.apk ──► phone
+```
+
+### The three files and folders that matter
+- **`capacitor.config.ts`**: `appId` (`org.notme.demo`, the app's unique name on the phone, also used by Firebase later), `appName` (`Notme`, shown under the icon), `webDir` (`dist`, where Vite puts the build).
+  ```ts
+  const config: CapacitorConfig = { appId: 'org.notme.demo', appName: 'Notme', webDir: 'dist' }
+  ```
+- **`android/`**: a normal Android Studio project created by `npx cap add android`. We commit it, because it is source code now. Its own `.gitignore` already keeps out build output, `local.properties` and the copied web files (`app/src/main/assets/public`).
+- **`package.json` scripts**: `android:sync` = `npm run build && cap sync android`; `android:open` = `cap open android`.
+
+### The everyday loop
+1. Change React code; check it in the browser with `npm run dev` (fastest).
+2. `npm run android:sync` builds `dist/` and copies it into `android/`.
+3. In Android Studio, press **Run ▶**: Gradle builds the APK and installs it on the phone.
+
+**Common mistake:** editing code, pressing Run, and seeing the *old* app. The phone only gets new code after step 2.
+
+**Environment values are baked in:** `VITE_SUPABASE_URL` and the publishable key in `.env.local` are written into the JavaScript at build time. Change `.env.local` → run `android:sync` again.
+
+### What works the same as in a browser, and what doesn't
+| Same | Different |
+|---|---|
+| Supabase sign-in is saved in `localStorage`, so it survives closing the app | The page is served from `https://localhost` inside the phone, not from a server |
+| Realtime (websockets), polling, the countdown, the Pause warning | The Android **Back** button: our app switches screens with React state, not browser history, so Back closes the app (fixable with `@capacitor/app`) |
+| The Web Audio beep (after a tap) | Nothing runs while the app is closed. Waking the phone needs **push** (Phase 3) |
+| Layout and accessibility (same CSS) | Safe areas: Capacitor 8 keeps the WebView out of the status and navigation bars unless the page asks for `viewport-fit=cover` (we don't) |
+
+### A real error from this phase: "Unsupported class file major version 69"
+The first build failed with that message. **Major version 69 = Java 25.** Android Studio 2026.2 bundles Java 25, but Capacitor 8's Android project uses Gradle 8.14.3, which can only *run* on Java 8–24 (Gradle's compatibility table: Java 25 needs Gradle 9.1+). **Fix:** tell Android Studio to run Gradle with Java 21 (Settings → Build Tools → Gradle → Gradle JDK → Download JDK… → 21). We didn't upgrade Gradle instead, because Capacitor 8's template and plugins are tested with Gradle 8.14.3 and Java 21.
+
+**Lesson:** read the error's key phrase, look up what it means (here, a table of class-file versions), and change the *smallest* thing: one setting, not the build tools.
+
+### Debugging on a phone
+- **`chrome://inspect`** in desktop Chrome, with the phone plugged in and USB debugging on → *inspect* opens DevTools for the app: console, network, elements.
+- **Logcat** in Android Studio shows Android's own log (crashes, Capacitor messages).
+
+### Phase 2 (onsite) file-by-file
+| File | What / why | Inputs → outputs | Common mistake | Practice (no AI) |
+|---|---|---|---|---|
+| `capacitor.config.ts` | Tells the Capacitor CLI the app's id, name and where the web build is | read by `npx cap …` → native project settings | Wrong `webDir` (e.g. `build`): sync copies nothing and the app shows a blank screen | Change `appName` to "Notme Demo", sync, and find where it appears on the phone |
+| `android/` | The native Android project (Gradle, manifest, icons) | `dist/` + settings → APK | Editing files in `android/app/src/main/assets/public` by hand: the next sync overwrites them | Find the `INTERNET` permission in `AndroidManifest.xml` and explain why the app needs it |
+| `package.json` scripts | One command to build + copy | — | Forgetting `npm run build` before `cap sync` | Add a script `android:run` that runs `cap run android` |
+| `.gitignore` (root) | Keeps `google-services.json`, service-account keys and keystores out of git | — | Committing a keystore or key "just for the demo" | Explain why `google-services.json` is listed even though it isn't a password |
+
+### Phase 2 (onsite) exercises (no AI; answers aren't included)
+1. Change the Pause warning's first line, then get the change onto the phone. Write down every command and click in order.
+2. With the phone plugged in, use `chrome://inspect` to find the `fetch` request that `create_money_request` makes when you send an alert. Which URL does it go to?
+3. Explain in two sentences why the app keeps working after you unplug the phone from the laptop, but `npm run dev` on the laptop does not need to be running.
+
+### Phase 2 (onsite) self-test
+1. What is a WebView?
+2. What does `npx cap sync android` copy, and from where to where?
+3. Why do changes to `.env.local` need a new sync?
+4. Why does the Back button close the app right now?
+5. Which tool shows the app's JavaScript console when it runs on a phone?
 
 ## 15. Push notifications  *(onsite Phase 3)*
 Planned: push vs Realtime (who wakes whom); Firebase Cloud Messaging; the device **token** ("the phone's postal address for notifications"); `google-services.json`; the Android 13 permission prompt; notification **channels** and importance; foreground vs background vs killed app; `0007_push_tokens.sql` and why tokens are written only through a function and never readable from the app; opening a request from a notification tap.
@@ -1562,3 +1627,10 @@ Planned: an Android failure-mode table from real tests (app closed, phone locked
 - **Function signature:** a function's name plus its argument types, e.g. `create_money_request(integer, integer)`. Postgres treats different signatures as different functions.
 - **Overload:** a second function with the same name but different arguments.
 - **`DROP COLUMN`:** removes a column (and its data and checks) from an existing table.
+- **Application id (`appId`):** the unique name of an Android app on a phone, e.g. `org.notme.demo`.
+- **Gradle:** the build tool Android uses to turn the project into an APK.
+- **`npx cap sync`:** copies the web build into the native project and updates plugins.
+- **USB debugging:** a developer setting that lets a computer install and inspect apps on the phone.
+- **Logcat:** Android's system log, shown in Android Studio.
+- **JDK / Gradle JDK:** the Java toolkit; the "Gradle JDK" is the Java version Android Studio uses to run Gradle.
+- **Class file major version:** a number inside compiled Java code saying which Java made it (65 = Java 21, 69 = Java 25).

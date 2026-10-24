@@ -423,3 +423,45 @@ Committed as `11504dc` `(onsite)`.
 | README "Manual test: amount-only alert on the new Notme project" (two browser windows) | ✅ worked |
 
 So the SQL in 0006 has now run on a real Supabase project. The Flod project was left untouched as the backup.
+
+Docs update committed as `68db1be` `(onsite)`.
+
+---
+
+## 2026-10-24 · Phase 2 (Notme) — Android app with Capacitor `[onsite]` *(in progress)*
+
+**Setup found (checked by the AI assistant, about 22:15 IST):** Android Studio 2026.2 "Rabbit" (build 262.9437.185), bundled Java (JBR) **25.0.3**; Android SDK in `%LOCALAPPDATA%\Android\Sdk` with platform android-37.0, build-tools 36.0.0, platform-tools (adb 1.0.41), emulator, Google Play x86_64 system image for API 37 and an emulator named *Medium_Phone_API_37.0*. No phone connected. No other JDK on the PC.
+
+**Docs read (2026-10-24):** Capacitor Android guide, Capacitor config reference (`appId`, `appName`, `webDir`; Android options; `plugins.SystemBars.insetsHandling` default `css`), the SystemBars page (the WebView stays out of the system bars unless the page uses `viewport-fit=cover`; ours doesn't, so no CSS change), and Gradle's Java compatibility table.
+
+**Done**
+- Installed `@capacitor/core` and `@capacitor/android` (dependencies) and `@capacitor/cli` (dev dependency), all **8.5.3**, MIT. npm warned that a dependency of the CLI (`uuid@7`) is deprecated; it is a build-time tool only.
+- New `capacitor.config.ts`: `appId: 'org.notme.demo'`, `appName: 'Notme'`, `webDir: 'dist'`; added to `tsconfig.node.json` so it is type-checked.
+- `npm run build` then `npx cap add android`: created `android/` (Capacitor template: Gradle 8.14.3, Android Gradle Plugin 8.13.0, minSdk 24, compile/target SDK 36, only the INTERNET permission; its own `.gitignore` excludes build output, `local.properties` and the copied web files).
+- `package.json` scripts `android:sync` (build + `cap sync android`) and `android:open`.
+- Root `.gitignore`: `google-services.json`, `*service-account*.json`, `*.jks`, `*.keystore`.
+- README "Android app" section (requirements, run-on-phone steps, Phase 2 phone test); LEARNING_GUIDE Part B §14; DISCLOSURE lists the Capacitor packages and the generated Android template.
+
+**Checks run by the AI assistant**
+
+| Check | Result |
+|---|---|
+| `npm run typecheck`, `npm run lint` | ✅ |
+| `npm test` | ✅ 14 files, 87/87 |
+| `npm run build` + `npx cap add android` | ✅ web assets copied to `android/app/src/main/assets/public` |
+| `gradlew assembleDebug` with `JAVA_HOME` = Android Studio's JBR 25 | ❌ `Unsupported class file major version 69`, after downloading Gradle 8.14.3 from services.gradle.org. Cause: Gradle 8.14.x runs only on Java ≤ 24 (Java 25 needs Gradle 9.1+, per Gradle's compatibility table). Capacitor 8 builds with Java 21. |
+
+**Fix chosen:** run Gradle with **Java 21** (Android Studio → Gradle JDK → Download JDK… 21), keeping Capacitor's tested Gradle/AGP versions instead of upgrading Gradle. This needs the user's click in Android Studio; README step 5 explains it.
+
+**After the fix:** the user downloaded JetBrains Runtime 21.0.11 in Android Studio (`%USERPROFILE%\.jdks\jbr-21.0.11`) and set it as the Gradle JDK; Android Studio's log confirms "Instructing gradle to use java from …jbr-21.0.11". The user's first sync in Android Studio showed "Gradle project sync failed"; its log says "Build cancelled" (a cancelled run, most likely from changing the JDK mid-sync), not a code error.
+
+| Check (AI assistant, about 22:37 IST) | Result |
+|---|---|
+| `gradlew assembleDebug` with `JAVA_HOME` = JBR 21.0.11 | ✅ BUILD SUCCESSFUL in 5 m 19 s, 93 tasks; `android/app/build/outputs/apk/debug/app-debug.apk` (4.08 MB, ignored by git) |
+| Emulator *Medium_Phone_API_37.0* (Android API 37, 1080×2400): `adb install -r app-debug.apk`, launch `org.notme.demo` | ✅ installed and running; screenshot shows the Notme sign-in screen with the header, demo notice and both buttons below the status bar and above the navigation bar; no `AndroidRuntime`/`FATAL`/Capacitor error lines in logcat |
+
+The AI assistant did **not** sign in on the emulator (account passwords stay with the user), so Supabase sign-in, Realtime and the warnings have not yet been checked inside the app.
+
+**Not done yet:** the Phase 2 manual test (README "Manual test on the phone (Phase 2)") on a phone or the emulator.
+
+**AI assistance disclosure:** setup checks, config, scripts and docs by the AI assistant under the user's direction.

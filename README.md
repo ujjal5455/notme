@@ -10,7 +10,8 @@ Built at **Hackyard Build 2026** on top of the team's **pre-event** web prototyp
 
 - **From Flod (pre-event):** accounts and in-person pairing, requests saved in Supabase and delivered only to the linked family member, Confirm/Reject through a database function, live updates (Realtime, polling fallback), a countdown corrected to the database's clock, Pause warnings and a best-effort beep, accessibility work, automated tests and docs.
 - **Onsite Phase 1:** renamed to Notme; requests are **amount-only** (no payee/UPI ID, no note) in the form, the screens and the database (`0006_amount_only.sql`).
-- **Not built yet:** the Android app (Capacitor), push notifications to the family phone, and the server-side alert function. Until then Notme runs as a web app, and the family member sees a request only while the app is open.
+- **Onsite Phase 2 (in progress):** Capacitor 8 Android project added (`android/`, `capacitor.config.ts`); see **Android app** below. Not yet run on a phone.
+- **Not built yet:** push notifications to the family phone and the server-side alert function. Until then the family member sees a request only while Notme is open.
 
 See [`docs/PLAN.md`](docs/PLAN.md) for progress and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md) for what was done and tested.
 
@@ -93,6 +94,43 @@ First run `supabase/migrations/0005_server_time.sql` in the SQL Editor. Windows 
 8. **Zoom:** browser zoom 200% (Ctrl + +) at a phone-sized window → text wraps, nothing is cut off, no sideways scrolling.
 9. **Screen reader (optional):** Windows Narrator (Ctrl + Win + Enter) reads the Pause warning as soon as it appears, and reads status badges as words ("Rejected by family"), not just colours.
 
+## Android app (onsite Phase 2)
+
+Notme's Android app is the same React app packaged by **Capacitor 8**: Android shows our built web files (`dist/`) inside a WebView. The files are copied **into** the app, so after any code change run `npm run android:sync` and press Run again.
+
+**Requirements:** Android Studio 2025.2.1 or newer (it bundles Java and the Android SDK), Node 22+, and a `.env.local` with the **Notme** Supabase project's values (they are baked into the app at build time).
+
+### Run it on your phone
+
+1. **Developer options:** on the phone open **Settings → About phone** and tap **Build number** 7 times (Xiaomi: *MIUI/HyperOS version*; the name varies by brand). You'll see "You are now a developer".
+2. **USB debugging:** **Settings → System → Developer options → USB debugging** → on.
+3. Connect the phone to the laptop with a **data** USB cable. On the phone, allow **"Allow USB debugging?"** for this computer (tick *Always allow*).
+4. On the laptop, in this folder:
+   ```bash
+   npm run android:sync
+   ```
+   ```bash
+   npm run android:open
+   ```
+5. Android Studio opens the `android/` folder. **Set Gradle's Java to version 21 (one time):** **File → Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JDK → Download JDK… → Version 21**, any vendor (e.g. JetBrains Runtime or Eclipse Temurin) → **Download** → select it → **OK**. *Why:* Android Studio 2026.2 bundles Java 25, but the Gradle version in Capacitor 8's Android template (8.14.3) runs only on Java 24 or older, and Capacitor 8 builds with Java 21. With Java 25 the build fails with "Unsupported class file major version 69". Then **File → Sync Project with Gradle Files** and wait until the sync at the bottom finishes (the first time downloads a few hundred MB). If it offers to **upgrade** the Android Gradle Plugin, choose *Don't remind me* for now.
+6. In the device list at the top, pick your phone → press **Run ▶**. Notme installs and opens on the phone.
+7. **No phone?** **Device Manager → Medium Phone API 37 → ▶** starts the emulator, then press **Run ▶**.
+
+The phone needs internet (Wi-Fi or mobile data) to reach Supabase; it does not need the laptop once the app is installed.
+
+### Manual test on the phone (Phase 2)
+
+Phone = Asha (elder). Ravi (family) = a laptop browser with `npm run dev`, or a second device.
+
+1. The app opens on the sign-in screen with **Notme** in the header. Nothing is hidden under the status bar or the navigation bar.
+2. Sign in as Asha. **Close the app completely** (swipe it away from recent apps) and open it again → still signed in.
+3. Send an alert for ₹2,500 → Ravi's screen shows it by itself → **Reject** → the phone shows the **Pause** warning and beeps (volume up).
+4. Send another and let 60 seconds pass → **Unconfirmed** warning.
+5. On a request screen press the phone's **Back** button and note what happens. *(Expected for now: the app closes, because Notme switches screens itself instead of using browser history. Tell us if that's a problem; it can be fixed with Capacitor's App plugin.)*
+6. **Settings → Display → Font size** at the largest → text wraps, nothing is cut off, no sideways scrolling.
+7. Turn on **Airplane mode**, switch away from Notme and back → "Can't reach the server… don't pay". Turn it off → **Try again** clears it.
+8. **Debugging:** with the phone plugged in, open `chrome://inspect` in Chrome on the laptop → *Notme* → **inspect** shows the app's console, like DevTools for a web page.
+
 ## Scripts
 
 | Command | What it does |
@@ -103,6 +141,8 @@ First run `supabase/migrations/0005_server_time.sql` in the SQL Editor. Windows 
 | `npm test` | Run automated tests once (Vitest) |
 | `npm run test:watch` | Re-run tests whenever a file changes |
 | `npm run build` | Typecheck, then build production files into `dist/` |
+| `npm run android:sync` | Build the web app, then copy `dist/` into the Android project (`npx cap sync android`). Run it after **every** code change you want on the phone |
+| `npm run android:open` | Open the `android/` project in Android Studio |
 
 ### What the tests cover
 

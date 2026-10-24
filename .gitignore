@@ -19,6 +19,14 @@ coverage
 .env.*
 !.env.example
 
+# Android / Firebase files that must never be committed (onsite, Notme).
+# google-services.json identifies our Firebase project (Phase 3); the
+# service-account key is a real secret and lives only in Supabase secrets.
+google-services.json
+*service-account*.json
+*.jks
+*.keystore
+
 # Supabase CLI local state (used only for the optional offline backup)
 supabase/.temp
 supabase/.branches

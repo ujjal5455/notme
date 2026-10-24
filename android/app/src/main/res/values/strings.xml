@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Notme</string>
+    <string name="title_activity_main">Notme</string>
+    <string name="package_name">org.notme.demo</string>
+    <string name="custom_url_scheme">org.notme.demo</string>
+</resources>
