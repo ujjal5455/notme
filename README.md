@@ -153,7 +153,7 @@ With Docker Desktop running, `npx supabase init` then `npx supabase start` start
 
 ## Learning
 
-[`docs/LEARNING_GUIDE.md`](docs/LEARNING_GUIDE.md) teaches how to rebuild this app from an empty folder: a reading path in topic order, every major file explained, diagrams, common errors, a rebuild checklist and judge Q&A. [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) has 90-second and 3-minute demo walkthroughs.
+[`docs/LEARNING_GUIDE.md`](docs/LEARNING_GUIDE.md) teaches how to rebuild this app from an empty folder: a reading path in topic order, every major file explained, diagrams, common errors, a rebuild checklist and judge Q&A. [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) has 90-second and 3-minute demo walkthroughs, and [`docs/PRESENTING.md`](docs/PRESENTING.md) has tips for presenting them calmly.
 
 ## This is a prototype
 
