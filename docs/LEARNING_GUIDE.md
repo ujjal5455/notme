@@ -1561,9 +1561,38 @@ Every Android phone has a built-in browser engine called the **WebView**: Chrome
 | Same | Different |
 |---|---|
 | Supabase sign-in is saved in `localStorage`, so it survives closing the app | The page is served from `https://localhost` inside the phone, not from a server |
-| Realtime (websockets), polling, the countdown, the Pause warning | The Android **Back** button: our app switches screens with React state, not browser history, so Back closes the app (fixable with `@capacitor/app`) |
+| Realtime (websockets), polling, the countdown, the Pause warning | The Android **Back** button: our app switches screens with React state, not browser history, so Back closed the whole app. Fixed with `@capacitor/app` (see "The Back button" below) |
 | The Web Audio beep (after a tap) | Nothing runs while the app is closed. Waking the phone needs **push** (Phase 3) |
 | Layout and accessibility (same CSS) | Safe areas: Capacitor 8 keeps the WebView out of the status and navigation bars unless the page asks for `viewport-fit=cover` (we don't) |
+
+### The Back button (a bug found on the real phone)
+**Problem:** on the realme phone, pressing Back on any screen closed the whole app. Android's default Back means "go back in browser history, or close the app if there is none". Notme never adds history entries (it keeps the current screen in React state, `view`), so there was nothing to go back to.
+
+**Fix:** Capacitor's official **App plugin** (`@capacitor/app`). Listening for its `backButton` event turns off Android's default, and our code decides instead:
+
+```ts
+// src/hooks/useBackButton.ts (simplified)
+const listener = App.addListener('backButton', () => {
+  if (!latestOnBack.current()) void App.minimizeApp() // already home: go to background
+})
+
+// src/SignedInApp.tsx
+useBackButton(() => {
+  const home = homeFor(role)              // Asha: elderHome, Ravi: familyInbox
+  if (view.name === home.name) return false
+  goTo(home)                              // any other screen: go home
+  return true
+})
+```
+
+**Three ideas inside it:**
+- **Native-only:** `Capacitor.isNativePlatform()` is false in a browser and in tests, so the hook does nothing there.
+- **"Latest" ref:** the listener is registered once, but it calls `latestOnBack.current`, which is updated after every redraw. So it always knows the *current* screen. Without the ref, it would remember the screen from when it was registered (a "stale closure").
+- **Clean-up:** the listener is removed when `SignedInApp` goes away (sign-out), so the sign-in screen gets Android's normal Back again.
+
+**Why minimise instead of exit:** `App.minimizeApp()` is like pressing Home: Notme keeps running and stays signed in. That's what modern Android does for Back on an app's first screen, and it means the elder never has to sign in again in a hurry.
+
+**Tests:** `src/hooks/useBackButton.test.tsx` replaces the plugin with a fake and "presses Back" by calling the registered listener: handled → no minimise; on home → minimise; newest handler used; listener removed on unmount; nothing registered in a browser.
 
 ### A real error from this phase: "Unsupported class file major version 69"
 The first build failed with that message. **Major version 69 = Java 25.** Android Studio 2026.2 bundles Java 25, but Capacitor 8's Android project uses Gradle 8.14.3, which can only *run* on Java 8–24 (Gradle's compatibility table: Java 25 needs Gradle 9.1+). **Fix:** tell Android Studio to run Gradle with Java 21 (Settings → Build Tools → Gradle → Gradle JDK → Download JDK… → 21). We didn't upgrade Gradle instead, because Capacitor 8's template and plugins are tested with Gradle 8.14.3 and Java 21.
@@ -1580,6 +1609,8 @@ The first build failed with that message. **Major version 69 = Java 25.** Androi
 | `capacitor.config.ts` | Tells the Capacitor CLI the app's id, name and where the web build is | read by `npx cap …` → native project settings | Wrong `webDir` (e.g. `build`): sync copies nothing and the app shows a blank screen | Change `appName` to "Notme Demo", sync, and find where it appears on the phone |
 | `android/` | The native Android project (Gradle, manifest, icons) | `dist/` + settings → APK | Editing files in `android/app/src/main/assets/public` by hand: the next sync overwrites them | Find the `INTERNET` permission in `AndroidManifest.xml` and explain why the app needs it |
 | `package.json` scripts | One command to build + copy | — | Forgetting `npm run build` before `cap sync` | Add a script `android:run` that runs `cap run android` |
+| `src/hooks/useBackButton.ts` | Makes Android's Back go to the home screen, then minimise | `onBack(): boolean` → registers/removes a `backButton` listener | Using `onBack` directly inside the listener: it would remember an old screen (stale closure) | Make Back on the *New request* screen ask "Leave without sending?" before going home |
+| `src/SignedInApp.tsx` (Back part) | Decides what Back means for the current screen | current `view` → `goTo(home)` or "not handled" | Forgetting that the family member's home is `familyInbox`, not `elderHome` | Make Back on a request screen return to the screen you opened it from instead of always home |
 | `.gitignore` (root) | Keeps `google-services.json`, service-account keys and keystores out of git | — | Committing a keystore or key "just for the demo" | Explain why `google-services.json` is listed even though it isn't a password |
 
 ### Phase 2 (onsite) exercises (no AI; answers aren't included)
@@ -1591,7 +1622,7 @@ The first build failed with that message. **Major version 69 = Java 25.** Androi
 1. What is a WebView?
 2. What does `npx cap sync android` copy, and from where to where?
 3. Why do changes to `.env.local` need a new sync?
-4. Why does the Back button close the app right now?
+4. Why did the Back button close the whole app before the fix, and what does `useBackButton` do on the home screen?
 5. Which tool shows the app's JavaScript console when it runs on a phone?
 
 ## 15. Push notifications  *(onsite Phase 3)*
@@ -1634,3 +1665,6 @@ Planned: an Android failure-mode table from real tests (app closed, phone locked
 - **Logcat:** Android's system log, shown in Android Studio.
 - **JDK / Gradle JDK:** the Java toolkit; the "Gradle JDK" is the Java version Android Studio uses to run Gradle.
 - **Class file major version:** a number inside compiled Java code saying which Java made it (65 = Java 21, 69 = Java 25).
+- **Capacitor plugin:** a package that gives JavaScript access to a phone feature (here `@capacitor/app` for the Back button).
+- **Stale closure:** a function that still sees old values from when it was created; fixed here with a "latest" ref.
+- **Minimise:** send the app to the background without closing it (like pressing Home).

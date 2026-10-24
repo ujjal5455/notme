@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ConnectionNotice } from './components/ConnectionNotice'
 import { Layout } from './components/Layout'
 import { REQUEST_TIMEOUT_SECONDS } from './config'
+import { useBackButton } from './hooks/useBackButton'
 import { useMyRequests } from './hooks/useMyRequests'
 import { useNewWarnings } from './hooks/useNewWarnings'
 import { useNow } from './hooks/useNow'
@@ -76,6 +77,15 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
     setView(nextView)
     window.scrollTo(0, 0)
   }
+
+  // Android's Back button: from any other screen, go to this person's home
+  // screen; on the home screen, let the hook minimise the app.
+  useBackButton(() => {
+    const home = homeFor(role)
+    if (view.name === home.name) return false
+    goTo(home)
+    return true
+  })
 
   function openRequest(requestId: string) {
     markSeen(requestId)

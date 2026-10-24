@@ -10,7 +10,7 @@ Built at **Hackyard Build 2026** on top of the team's **pre-event** web prototyp
 
 - **From Flod (pre-event):** accounts and in-person pairing, requests saved in Supabase and delivered only to the linked family member, Confirm/Reject through a database function, live updates (Realtime, polling fallback), a countdown corrected to the database's clock, Pause warnings and a best-effort beep, accessibility work, automated tests and docs.
 - **Onsite Phase 1:** renamed to Notme; requests are **amount-only** (no payee/UPI ID, no note) in the form, the screens and the database (`0006_amount_only.sql`).
-- **Onsite Phase 2 (in progress):** Capacitor 8 Android project added (`android/`, `capacitor.config.ts`); see **Android app** below. Not yet run on a phone.
+- **Onsite Phase 2:** Capacitor 8 Android project added (`android/`, `capacitor.config.ts`); see **Android app** below. Builds with Gradle on Java 21; tested on the emulator (opens) and on a realme GT 6T (user: the elder ↔ family flow works).
 - **Not built yet:** push notifications to the family phone and the server-side alert function. Until then the family member sees a request only while Notme is open.
 
 See [`docs/PLAN.md`](docs/PLAN.md) for progress and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md) for what was done and tested.
@@ -126,7 +126,7 @@ Phone = Asha (elder). Ravi (family) = a laptop browser with `npm run dev`, or a 
 2. Sign in as Asha. **Close the app completely** (swipe it away from recent apps) and open it again → still signed in.
 3. Send an alert for ₹2,500 → Ravi's screen shows it by itself → **Reject** → the phone shows the **Pause** warning and beeps (volume up).
 4. Send another and let 60 seconds pass → **Unconfirmed** warning.
-5. On a request screen press the phone's **Back** button and note what happens. *(Expected for now: the app closes, because Notme switches screens itself instead of using browser history. Tell us if that's a problem; it can be fixed with Capacitor's App plugin.)*
+5. **Back button:** on a request screen (or New request / Safety) press the phone's **Back** → you return to your home screen (Asha: Home; Ravi: the inbox). Press **Back** again on the home screen → the app goes to the background (still signed in when you reopen it). *(Before this fix, Back closed the app from any screen.)*
 6. **Settings → Display → Font size** at the largest → text wraps, nothing is cut off, no sideways scrolling.
 7. Turn on **Airplane mode**, switch away from Notme and back → "Can't reach the server… don't pay". Turn it off → **Try again** clears it.
 8. **Debugging:** with the phone plugged in, open `chrome://inspect` in Chrome on the laptop → *Notme* → **inspect** shows the app's console, like DevTools for a web page.

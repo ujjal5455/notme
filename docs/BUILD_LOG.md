@@ -464,4 +464,30 @@ The AI assistant did **not** sign in on the emulator (account passwords stay wit
 
 **Not done yet:** the Phase 2 manual test (README "Manual test on the phone (Phase 2)") on a phone or the emulator.
 
+Committed as `5edc633` `(onsite)`; `985e4fd` `(onsite)` added `*.bat text eol=crlf` to `.gitattributes` after git warned that `android/gradlew.bat` would otherwise check out with LF endings (checked in a fresh clone: CRLF).
+
+**Phone connection (2026-10-24):** Windows first saw the user's realme GT 6T only over Bluetooth, not USB (no USB/MTP/ADB device in Windows' device list), so adb didn't list it. After the user fixed the connection, Android Studio listed **realme RMX3853** (the GT 6T). The AI assistant re-ran `npm run android:sync` (✅) and started the web app (`npm run dev`, http://localhost:5173, sign-in screen, no console errors) for the family side.
+
+**Phase 2 manual test, run by the user (reported in chat, 2026-10-24):** Notme installed from Android Studio on the realme GT 6T and the user reports the test "works fine": elder on the phone, family member in the laptop browser, against the Notme Supabase project. The individual checklist steps (sign-in kept after closing, Reject → Pause + beep, 60 s timeout, largest font, airplane mode) were not reported one by one, and **the Back button's behaviour was not reported**.
+
+**Bug found on the phone (user, 2026-10-24):** pressing **Back** closed the whole app from any screen. Cause: Notme keeps the current screen in React state, never in browser history, so Android's default Back had nothing to go back to and closed the app.
+
+**Fix (AI assistant):**
+- Installed `@capacitor/app` **8.1.2** (MIT, Capacitor's official App plugin). Docs read: capacitorjs.com/docs/apis/app ("Listening for this event will disable the default back button behaviour"; `minimizeApp()` is Android-only).
+- New `src/hooks/useBackButton.ts`: on Android only (`Capacitor.isNativePlatform()`), registers one `backButton` listener that calls the newest `onBack` (kept in a ref); if `onBack` returns false, `App.minimizeApp()`. The listener is removed on unmount, so the sign-in screen keeps Android's normal Back.
+- `src/SignedInApp.tsx`: Back from any screen goes to the person's home screen (`elderHome` / `familyInbox`); Back on the home screen minimises the app.
+- New `src/hooks/useBackButton.test.tsx` (5 tests, plugin faked): handled → no minimise; home → minimise; newest handler used; listener removed on unmount; nothing registered in a browser.
+
+| Check (AI assistant, about 23:12 IST) | Result |
+|---|---|
+| `npm run typecheck`, `npm run lint` | ✅ |
+| `npm test` | ✅ 15 files, **92/92** |
+| `npm run android:sync` | ✅ "Found 1 Capacitor plugin for android: @capacitor/app@8.1.2"; `capacitor.settings.gradle` includes `:capacitor-app` |
+| `gradlew assembleDebug` (JBR 21) | ✅ BUILD SUCCESSFUL; `app-debug.apk` 4.09 MB |
+| Install + launch on the emulator | ✅ logcat: "Registering plugin instance: App", "App started", no `AndroidRuntime`/`FATAL`; only Capacitor's usual "Unable to read file at path public/plugins" notice |
+
+**Not checked by the AI assistant:** the new Back behaviour itself, because it only applies after signing in, and the AI assistant doesn't sign in. It is README Phase 2 test step 5, for the user on the realme phone.
+
+**Re-checked by the user on the realme GT 6T (reported in chat, 2026-10-24):** "Back works on the phone now: request screen goes home, home minimises the app." Phase 2 complete.
+
 **AI assistance disclosure:** setup checks, config, scripts and docs by the AI assistant under the user's direction.
