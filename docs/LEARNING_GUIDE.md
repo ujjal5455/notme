@@ -18,6 +18,14 @@ This guide teaches you to rebuild Flod **from an empty folder without AI**. It w
 | 10 | Timeout, visual/audio warnings and failure handling | Phase 7 §10 + failure-mode table | ✅ |
 | 11 | Tests, debugging, deployment and environment variables | §11 "Tests and scripts" (Phase 1); **§11 (complete)** near the end | ✅ (hosting itself: Phase 9) |
 | 12 | Diagrams, glossary, common errors, exercises, rebuild checklist, judge Q&A | **§12** near the end; each phase's exercises and self-test | ✅ |
+| 13 | **Notme:** what changed from Flod and why | **Part B** §13 (at the very end) | ⏳ outline (onsite Phase 0); filled in Phase 1 |
+| 14 | Capacitor: a web app inside an Android app | Part B §14 | ⏳ Phase 2 |
+| 15 | Push notifications: FCM, tokens, channels, permission | Part B §15 | ⏳ Phase 3 |
+| 16 | Supabase Edge Functions and server-only secrets | Part B §16 | ⏳ Phase 4 |
+| 17 | Testing on real Android phones and failure modes | Part B §17 | ⏳ Phase 5 |
+| 18 | Disclosure: pre-event vs onsite, and how git shows it | Part B §18 | ⏳ outline now; complete in Phase 6 |
+
+**Part A (everything above Part B) teaches Flod**, the pre-event web prototype that Notme is built on. **Part B teaches what was added onsite** to turn it into the Notme Android app.
 
 Every major file is explained (what, why, inputs/outputs, important parts, common mistakes, practice task) in the "file-by-file" table of the phase that created it. **Appendix: file index** near the end says which table to look in.
 
@@ -1409,3 +1417,66 @@ Practise saying these out loud in 20–30 seconds each.
 - **Focus management:** moving keyboard focus to the right place when the screen changes.
 - **Contrast ratio:** how different text and background brightness are; WCAG AA needs 4.5:1 for normal text.
 - **Failure mode:** one way something can go wrong, with what the app does about it.
+
+---
+
+# Part B — Notme (onsite, Hackyard Build 2026)
+
+*Outline written in onsite Phase 0 (2026-10-24). Each section is filled in by the phase shown. Plan: `docs/PLAN.md`.*
+
+## The big picture for Notme (read first)
+
+Flod asked the elder to type the amount **and** who the money goes to, then waited for a family member who happened to have the app open. Notme makes two changes:
+
+1. **Less for the panicking person to do.** The elder types only the amount and taps **Send alert**. Thinking is moved to the calm family member.
+2. **The family phone rings even when the app is closed.** A web page can't wake a sleeping phone; an Android app with **push notifications** can.
+
+**Analogy:** Flod was a notice pinned on a board that the family member had to walk past. Notme is a doorbell: the elder presses it, and it rings in the family member's pocket.
+
+```
+Elder taps Send alert
+  → database saves the request (amount, who it's for, deadline)        [Flod, simplified]
+  → Edge Function on Supabase's server asks Firebase to ring the phone  [new]
+  → family phone shows a loud notification                              [new]
+  → family taps it, then Confirm or Reject                              [Flod]
+  → elder's screen updates live; Pause warning if rejected or no answer [Flod]
+```
+
+The four request states (`pending`, `approved`, `rejected`, `expired`) and every safety rule from Part A stay the same.
+
+## 13. What changed from Flod and why  *(onsite Phase 1)*
+Planned: the amount-only decision and its trade-off (the family member no longer sees the payee, so their job is to call the elder, not to check a UPI ID); `0006_amount_only.sql` (ALTER TABLE, DROP COLUMN, replacing a function whose argument list changes); how removing one field ripples through types, validation, screens, mocks and tests; why validation stays in two places; the new Supabase project and why Flod's is kept as the backup.
+
+## 14. Capacitor: a web app inside an Android app  *(onsite Phase 2)*
+Planned: WebView; what Capacitor adds; `capacitor.config.ts` and `webDir`; the loop `npm run build` → `npx cap sync` → run from Android Studio; the `android/` folder; USB debugging; Logcat and `chrome://inspect`; what works the same as in a browser (localStorage sessions, Realtime, Web Audio) and what doesn't.
+
+## 15. Push notifications  *(onsite Phase 3)*
+Planned: push vs Realtime (who wakes whom); Firebase Cloud Messaging; the device **token** ("the phone's postal address for notifications"); `google-services.json`; the Android 13 permission prompt; notification **channels** and importance; foreground vs background vs killed app; `0007_push_tokens.sql` and why tokens are written only through a function and never readable from the app; opening a request from a notification tap.
+
+## 16. Supabase Edge Functions and server-only secrets  *(onsite Phase 4)*
+Planned: what runs on the phone vs on a server; why an APK can't keep a secret (anyone can unzip it); Edge Function secrets; verifying the caller's login inside the function; why the receiver comes from the database and never from the request body; FCM HTTP v1 and OAuth access tokens; "at most once" alerts with `alert_sent_at` (idempotency again); what the elder sees if the alert can't be sent.
+
+## 17. Testing on real Android phones  *(onsite Phase 5)*
+Planned: an Android failure-mode table from real tests (app closed, phone locked, battery saver, Do Not Disturb, permission denied, offline, Supabase down, late/duplicate answers, timeout); why push delivery can never be guaranteed; TalkBack and 200% font checks.
+
+## 18. Disclosure: pre-event vs onsite  *(outline now; complete in Phase 6)*
+- The event rules allow pre-event foundations **only when disclosed**, and require meaningful onsite transformation (`docs/PLAN.md` §6 quotes them).
+- Git tells the story: the tag `pre-event-end` marks the last pre-event commit. Try it:
+  ```bash
+  git log --oneline pre-event-end..HEAD
+  ```
+  Every line it prints happened after the event began; each subject ends with `(onsite)`, except `2f3f631`, which says `(pre-event)` and explains why.
+- `docs/DISCLOSURE.md` lists what came from Flod, what was built onsite, the libraries and services, and how the AI assistant helped.
+
+**Phase 0 exercise (no AI; answer before Phase 1 starts):** without looking at `docs/PLAN.md`, draw the alert's path from the elder's tap to the family member's phone and back, on paper, with one box per part (elder phone, database, Edge Function, Firebase, family phone). Mark which box holds the Firebase secret key, and write one sentence on why it can't be the elder's phone.
+
+## Glossary (Part B, grows every phase)
+- **Capacitor:** a tool that packages a web app as a native Android (or iOS) app and gives JavaScript access to phone features through plugins.
+- **WebView:** a browser engine embedded inside an app, without the address bar.
+- **APK:** the installable file of an Android app.
+- **Push notification:** a message a server sends to a phone through the phone maker's or Google's delivery service, shown even when the app is closed.
+- **FCM (Firebase Cloud Messaging):** Google's free push-notification service for Android.
+- **Device token:** the address FCM uses to reach one app on one phone; it can change, and is not a password.
+- **Notification channel:** an Android category of notifications with its own importance and sound settings.
+- **Edge Function:** a small server-side program hosted by Supabase.
+- **Secret (server-only):** a key that must never be in the app, because anyone can unpack an APK and read it.

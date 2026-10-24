@@ -1,7 +1,9 @@
-# Flod — Build Log
+# Notme — Build Log (with the pre-event Flod log)
 
 A truthful, dated record of what was built, by whom/what, and what was actually tested.
 Tags: `[pre-event]` = before the official Hackyard Build 2026 window (24–25 Oct 2026, IIT Guwahati); `[onsite]` = during it.
+
+Entries up to "User-flow feedback for Notme" are the **pre-event Flod** log, kept unchanged. In those entries, "`docs/PLAN.md`" means Flod's plan, now at `docs/flod-reference/PLAN-flod.md`. The onsite Notme entries start at "Onsite start".
 
 ---
 
@@ -344,3 +346,37 @@ Phase 3's last manual check is now ticked in `docs/PLAN.md`. Correction to the r
 **Done (at the user's request):** saved the team's design discussion as `docs/USER_FLOW_FEEDBACK.md`: practical flaws for elderly users, rethought for an Android app (the event project, Notme); why an app beats a phone call (and when it doesn't); scammer scripts ("don't call me", real emergencies needing money now); a table of open scenarios with fixes, rated solvable / reducible / unsolvable; a 24-hour build priority list; honest limits; judge answers; and a 15-minute role-play test script. **This is design analysis, not user testing:** no real users have tested Flod or Notme yet. One claim (Indian rules on emergency treatment for accident victims) is marked "verify before quoting". No code changed.
 
 **AI assistance disclosure:** written by the AI assistant from the user's questions and scenarios.
+
+---
+
+## 2026-10-24 · Onsite start: Flod imported into Notme `[onsite]`
+
+**Decisions by the user (2026-10-24):**
+- Notme is an **Android app**. The elder sends **only an amount and a warning alert** to the linked family member: no QR scanning, no payee/UPI ID. This overrides item 1 of `docs/USER_FLOW_FEEDBACK.md` §5 and the recipient field in Flod.
+- Instead of rebuilding from an empty folder, Notme reuses the pre-event Flod code, disclosed as such. Android approach: **Capacitor** on top of the imported code.
+
+**What happened:**
+- The user copied the whole `D:\PROJECTS\Flod` folder into `D:\PROJECTS\Notme`, including Flod's git history (`.git`), `node_modules`, `dist`, `presentation/`, `Learning/`, a local settings folder and `.env.local` (folder last modified 18:24 IST). `D:\PROJECTS\Flod` itself is unchanged.
+- The AI assistant compared every copied file with Flod by SHA-256 hash: none missing, none different. Extra in Notme: a duplicate `USER_FLOW_FEEDBACK.md` in the root (identical to `docs/USER_FLOW_FEEDBACK.md`). No git remote is configured.
+- Checks on the copy, run by the AI assistant at about 18:38 IST: `npm run typecheck` ✅, `npm run lint` ✅, `npm test` ✅ 14 files, 88/88 tests.
+- Annotated tag **`pre-event-end`** on `f710e6f` (tagged 18:40 IST): the last commit made before the event.
+- `2f3f631` *Add presenting tips and link them from README (pre-event)*: `docs/PRESENTING.md` and a one-line README link, written for Flod before the event (files last saved 24 Oct 01:59) but not committed then; committed unchanged. The user confirmed these are pre-event work. The secret-pattern scan of both files found only a warning sentence, no keys.
+- `6b2c775` *Keep Learning/ notes local and out of git (onsite)*: `Learning/` added to `.gitignore`; the duplicate root `USER_FLOW_FEEDBACK.md` (never committed) deleted after re-checking it matched.
+
+**AI assistance disclosure:** comparison, checks, tag and commits run by the AI assistant at the user's request; the copy itself was done by the user.
+
+---
+
+## 2026-10-24 · Phase 0 (Notme) — Onsite plan, rules re-check, docs `[onsite]`
+
+**Done**
+- Rewrote the project brief and `PROMPTS.md` (onsite Phases 0–6 and rescue prompts) for the Notme Android app. Both are local files, ignored by git as in Flod.
+- Moved Flod's finished plan to `docs/flod-reference/PLAN-flod.md` (`git mv`, history kept) and wrote the onsite `docs/PLAN.md`: architecture with Capacitor + FCM + a Supabase Edge Function, phases and files, data-model changes (0006 amount-only, 0007 push tokens, 0008 alert sent), alert lifecycle, risks and fallbacks, assumptions, time estimates, acceptance checklists.
+- Re-checked the official rules on 2026-10-24: https://hackyard.org/build2026/rules and https://hackyard.org/build2026/guide, both still "Last updated: 22 September 2026"; same reuse/disclosure rules as before; start/end times and submission requirements still **not stated**. https://hackyardbuild2026.devpost.com/ still returns HTTP 403.
+- Read current docs (2026-10-24): Capacitor environment setup (Capacitor 8 needs Android Studio 2025.2.1+, Node 22+, SDK platform API 24+), Capacitor getting started (add to an existing web app), `@capacitor/push-notifications` (Firebase project, `google-services.json`, Android 13 permission, channels, token on `registration`, killed-app limits for data-only messages, Doze), and Supabase's push-notification example (FCM HTTP v1 from an Edge Function; the example keeps the service-account key as a file next to the function, which Notme will not do: the key goes into Supabase secrets).
+- Tooling check: Node v24.14.0, npm 11.10.0; **no Java, no Android SDK, no Android Studio** on this PC.
+- Updated `docs/DISCLOSURE.md` §1 (Notme is built on the imported Flod code, not from scratch) and added the Part B outline to `docs/LEARNING_GUIDE.md`.
+
+**Not done:** no feature code; nothing installed. Plan **awaiting the user's approval**.
+
+**AI assistance disclosure:** plan, brief, prompts and doc updates written by the AI assistant under the user's direction.

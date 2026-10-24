@@ -27,7 +27,9 @@ This document therefore does **not** claim to follow a required format; it is si
 | `b0e3b9d` | 2026-10-23 | Phase 7: timeout, warnings, accessibility, failure handling |
 | (later commits) | 2026-10-23 | Phases 8–9: tests, docs, demo script, deployment notes, this file |
 
-**Plan for the event:** the team intends to build a **separate new project ("Notme") from scratch during the official window**. If any code, SQL, text or design from Flod is copied into it, that part is pre-event work and must be disclosed as such (for example: "database schema adapted from our pre-event prototype Flod"). Rebuilding from the learning guide is the cleanest option.
+**Plan for the event (as written on 2026-10-23):** the team intended to build a separate new project ("Notme") from scratch during the official window.
+
+**What actually happened (updated onsite, 2026-10-24):** the team decided not to start from scratch. The whole Flod project, including its git history, was copied into the Notme folder, and Notme is being built **on top of the Flod code**. So everything in Notme up to the git tag **`pre-event-end`** (commit `f710e6f`), plus commit `2f3f631` (two pre-event docs committed late, labelled `(pre-event)`), is **pre-event work from Flod**. Every later commit is labelled `(onsite)`; `git log --oneline pre-event-end..HEAD` lists them. Planned onsite transformation: amount-only alerts (no payee), an Android app (Capacitor), push notifications (Firebase Cloud Messaging), a server-side alert function (Supabase Edge Function), and testing on Android phones. This file is updated as that work lands.
 
 ## 2. Third-party software
 

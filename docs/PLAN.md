@@ -1,236 +1,222 @@
-# Flod — Implementation Plan
+# Notme — Onsite Implementation Plan
 
-> Status: **approved** on 2026-10-21 (approval given by starting Phase 1).
-> Renamed from **Notme** to **Flod** on 2026-10-21 (name only; scope unchanged).
-> Source of truth for scope: the project brief. Phase prompts: `PROMPTS.md` (renamed from `NOTME_PROMPTS.md` on 2026-10-21).
+> Status: **draft, awaiting the user's approval** (written 2026-10-24, onsite).
+> Brief: the project brief. Phase prompts: `PROMPTS.md`. Flod's finished pre-event plan: [`docs/flod-reference/PLAN-flod.md`](flod-reference/PLAN-flod.md) (pre-event build-log entries that say "`docs/PLAN.md` §N" mean that file).
 
 ## Progress
 
-- [x] **Phase 0** — Plan, verify rules, learning roadmap
-- [x] **Phase 1** — Scaffold and run the app (mock screens)
-- [x] **Phase 2** — User flows with local mock data
-- [x] **Phase 3** — Supabase schema, RLS, database functions
-- [x] **Phase 4** — Authentication and trusted-family pairing *(code + automated tests 2026-10-23; manual two-browser test on real Supabase passed, reported by the user 2026-10-23)*
-- [x] **Phase 5** — Create requests and deliver to the linked family member *(code + automated tests 2026-10-23; manual two-browser test passed, reported by the user 2026-10-23)*
-- [x] **Phase 6** — Approve/reject and real-time status updates *(code + automated tests 2026-10-23; 0004 applied and manual two-browser test passed, reported by the user 2026-10-23)*
-- [x] **Phase 7** — Timeout, warnings, accessibility, failure handling *(code + automated tests 2026-10-23; 0005 applied and manual checklist passed, reported by the user 2026-10-23)*
-- [ ] **Phase 8** — Tests, complete learning guide, demo script *(review, tests, guide and demo script done 2026-10-23; quiz pending; user to re-run Phase 7 checklist step 2 after the bug fix)*
-- [ ] **Phase 9** — Deployment and hackathon readiness *(docs, checks and disclosure done 2026-10-23; user to deploy and run the live checks)*
+- [x] **Phase 0** — Onsite plan, rules re-check, docs *(2026-10-24; awaiting approval)*
+- [ ] **Phase 1** — Rename to Notme; amount-only request (web)
+- [ ] **Phase 2** — Android app with Capacitor
+- [ ] **Phase 3** — Push notifications on the family phone
+- [ ] **Phase 4** — Server sends the alert (Edge Function)
+- [ ] **Phase 5** — Safety and failure handling on real phones
+- [ ] **Phase 6** — Demo readiness and disclosure
+- [ ] *Stretch, only if approved after Phase 4 works:* more family contacts, "I'll call you", red-flag options, code-word reminder, PIN before Confirm
+
+**Start now, in parallel (user):** download and install **Android Studio 2025.2.1 or newer**. It is several GB, and nothing in Phase 2 can start without it.
 
 ---
 
 ## 1. Architecture
 
 ```
- Elder's browser                       Family member's browser
- React + TypeScript (static files)     same app, different account
-           │  supabase-js  (publishable key + the user's login token)
-           ▼                                   ▼
- ┌──────────────────────────────────────────────────────────┐
- │ Supabase                                                 │
- │  Auth      – who is signed in                            │
- │  Postgres  – tables + Row Level Security (who may READ)  │
- │            – small SQL functions (the ONLY way to WRITE) │
- │  Realtime  – pushes row changes to open screens          │
- └──────────────────────────────────────────────────────────┘
+ ELDER'S PHONE (Notme app)                       FAMILY MEMBER'S PHONE (Notme app)
+ React app inside Capacitor's WebView             same app, family account
+   │ ① create_money_request(amount)                     ▲ ④ push notification (sound, heads-up)
+   │ ② invoke send-alert(request_id)                    │ ⑤ tap → request screen → respond_to_request
+   ▼                                                     │
+ ┌───────────────────── Supabase (new Notme project) ─────────────────────┐
+ │ Auth       – who is signed in                                          │
+ │ Postgres   – tables + RLS (who may READ)                               │
+ │            – SQL functions (the ONLY way app users WRITE)              │
+ │ Realtime   – pushes row changes to open screens                        │
+ │ Edge Function send-alert – checks the caller, finds the family         │
+ │            member's device token, ③ calls FCM with a server-only key ──┼──► Firebase Cloud
+ └────────────────────────────────────────────────────────────────────────┘    Messaging (Google)
+   ▲ ⑥ Realtime / polling: elder sees Confirmed, or the Pause warning on Rejected / Unconfirmed
 ```
 
-**Golden rule: all reads go through RLS; all writes go through narrowly scoped SQL functions.** Tables get SELECT policies only.
+**Golden rules (kept from Flod):** all reads go through RLS; all app writes go through narrowly scoped SQL functions. **New:** only the Edge Function holds secrets, and only it can read device tokens.
 
-| Technology | Purpose |
-|---|---|
-| Vite | Dev server + bundler that turns our source into static files |
-| React | Builds the UI from small components that re-render when data changes |
-| TypeScript | Adds types so mistakes are caught before running |
-| oxlint | Fast linter (ships with the current Vite template; replaces ESLint from the draft plan — one package instead of several) |
-| Vitest + Testing Library + jsdom | Automated unit/component tests |
-| Supabase Auth / Postgres / RLS / Realtime | Accounts, data, access control, live updates (from Phase 3) |
-| Static host (Vercel / Netlify / Cloudflare Pages — chosen in Phase 9) | Public URL |
+| Technology | What it is, in plain words | Why Notme needs it |
+|---|---|---|
+| React + TypeScript + Vite | The Flod app: screens, logic, build into static files (`dist/`) | Already works; we reuse it |
+| **Capacitor 8** | A thin Android app that shows our web build inside a built-in browser view (WebView) and lets JavaScript call phone features | Turns the web app into an installable Android app without rewriting it |
+| **Android Studio** (+ Gradle, JDK, SDK) | Google's tool for building and running Android apps | Builds the APK and installs it on a phone |
+| **Firebase Cloud Messaging (FCM)** | Google's free delivery service for push notifications to Android phones | The only reliable way to wake a phone whose app is closed |
+| `@capacitor/push-notifications` | Capacitor plugin that asks permission, gets the phone's FCM token, and reports taps | Lets our React code use FCM |
+| **Supabase Edge Function** | A small TypeScript program that runs on Supabase's servers, not on the phone | Holds the FCM secret key and sends the alert; a phone app can't keep a secret |
+| Supabase Auth / Postgres / RLS / Realtime | Accounts, data, access rules, live updates (from Flod) | Unchanged core |
 
-**Deliberately avoided:** custom backend server, Redux/state libraries, UI component libraries, router (screen chosen by role + a `view` state; revisit only if needed), notifications/SMS, payment APIs, AI APIs, local Docker Supabase for daily work (kept only as offline backup).
+**Deliberately avoided:** native Kotlin/Java code, a custom backend server, database webhooks (the elder's app calls the function directly; simpler to test), a router or state library, QR/camera, SMS, iOS, Play Store, any AI API.
 
 ## 2. Phases and files
 
-| Phase | Creates (C) / Modifies (M) |
+C = create, M = modify. Files are planned; each phase records "as built" here afterwards.
+
+| Phase | Files |
 |---|---|
-| 0 | C `docs/PLAN.md`, `docs/BUILD_LOG.md`, `docs/LEARNING_GUIDE.md` |
-| 1 | C `package.json`, `vite.config.ts`, `tsconfig*.json`, `.oxlintrc.json`, `index.html`, `.gitignore`, `.env.example`, `README.md`, `public/favicon.svg`, `src/main.tsx`, `src/App.tsx`, `src/styles/global.css`, `src/types/domain.ts`, `src/mock/mockData.ts`, `src/pages/{ElderHome,CreateRequest,FamilyInbox,RequestDetail,AboutSafety}.tsx`, `src/components/{Layout,StatusBadge,RequestCard}.tsx`, `src/test/setup.ts`, tests; `git init` |
-| 2 | C `src/lib/validation.ts`, `src/lib/requestStatus.ts`, `src/mock/mockStore.ts`, `src/components/{RequestForm,StatusBanner,WarningPanel,FamilyResponse}.tsx`, **`src/config.ts`, `src/hooks/useNow.ts`** (pulled forward from Phase 7: the expired state needs a timeout value and a ticking clock) + tests. M pages, `App.tsx`, `Layout.tsx`, CSS, docs |
-| 3 | C `supabase/migrations/0001_tables.sql`, `0002_rls.sql`, `0003_functions.sql`, `supabase/checks/rls_checks.sql` (not `supabase/tests/`, which the Supabase CLI reserves for pgTAP). M `.env.example`, `README.md`, docs |
-| 4 | C `src/lib/supabaseClient.ts`, `src/auth/AuthProvider.tsx`, `src/pages/{SignIn,SignUp,ChooseRole,PairElder,PairFamily}.tsx`, `src/lib/api/{profile,pairing}.ts`; dep `@supabase/supabase-js`. M `App.tsx`, docs. **As built:** one `SignIn.tsx` with two modes (no `SignUp.tsx`); added `src/lib/api/errors.ts`, `src/auth/authContext.ts`, `src/SignedInApp.tsx`, `src/hooks/useCountdown.ts` (pulled forward from Phase 7), `src/test/fakeSupabase.ts`, `src/SignedInApp.test.tsx`; M `main.tsx`, `Layout.tsx`, `FamilyInbox.tsx`, `StatusBanner.tsx`, CSS, `README.md` |
-| 5 | C `src/lib/api/requests.ts`. M CreateRequest, ElderHome, FamilyInbox, tests, docs. **As built:** also C `src/hooks/useMyRequests.ts`; M `SignedInApp.tsx`, `RequestForm.tsx`, `FamilyResponse.tsx`, `RequestDetail.tsx`, `StatusBanner.tsx`, `Layout.tsx`, `src/test/fakeSupabase.ts`, `README.md` |
-| 6 | C `src/hooks/useRequestUpdates.ts`, `supabase/migrations/0004_realtime.sql`. M requests API, RequestDetail, ElderHome, docs. **As built:** also C `src/components/ConnectionNotice.tsx`, `src/lib/requestList.ts` (+ test), `src/components/FamilyResponse.test.tsx`, `src/hooks/useRequestUpdates.test.tsx`; M `FamilyResponse.tsx`, `SignedInApp.tsx`, `useMyRequests.ts`, `config.ts` (`POLL_INTERVAL_MS`), `StatusBanner.tsx`, `Layout.tsx`, fake Supabase, `README.md` |
-| 7 | C `src/hooks/useCountdown.ts`, `src/lib/alertSound.ts`. M `src/config.ts`, WarningPanel, CSS, docs. **As built:** `useCountdown.ts` already existed (Phase 4); C `supabase/migrations/0005_server_time.sql`, `src/lib/api/serverTime.ts`, `src/hooks/useServerOffset.ts`, `src/hooks/useNewWarnings.ts`, `src/components/TimeLeft.tsx`, `src/lib/alertSound.ts` (+ test); M `SignedInApp.tsx`, `ElderHome.tsx`, `RequestDetail.tsx`, `CreateRequest.tsx`, `FamilyResponse.tsx`, `PairFamily.tsx`, CSS, fake Supabase, `README.md`. `WarningPanel` unchanged (the beep lives in `useNewWarnings`) |
-| 8 | C `docs/DEMO_SCRIPT.md`, more tests. M `README.md`, `docs/LEARNING_GUIDE.md` |
-| 9 | C `docs/DISCLOSURE.md`. M README, PLAN, BUILD_LOG, DEMO_SCRIPT |
-| parallel | C `docs/USER_FLOW_FEEDBACK.md` (teammate). **As built (2026-10-23):** design review for the Android event app (Notme) from the team's discussion; no user testing yet; includes a role-play script for the event |
+| 0 | M the project brief, `PROMPTS.md` (local, not tracked by git); C `docs/PLAN.md`; moved Flod's plan to `docs/flod-reference/PLAN-flod.md`; M `docs/BUILD_LOG.md`, `docs/DISCLOSURE.md`, `docs/LEARNING_GUIDE.md` (Part B outline) |
+| 1 | C `supabase/migrations/0006_amount_only.sql`. M `package.json`, `package-lock.json` (name), `index.html` (title), `README.md`, `src/types/domain.ts`, `src/lib/validation.ts`, `src/lib/api/requests.ts`, `src/components/{RequestForm,RequestCard,StatusBanner,FamilyResponse,Layout}.tsx`, `src/pages/RequestDetail.tsx` (+ any page showing the name "Flod"), `src/mock/{mockData,mockStore}.ts`, `src/test/fakeSupabase.ts`, `src/styles/global.css`, the tests that use recipient/note, `supabase/checks/{rls_checks,deploy_checks}.sql`, `.env.example` (comment only) |
+| 2 | C `capacitor.config.ts`, `android/` (generated by `npx cap add android`). M `package.json` (deps + `cap:sync` script), `.gitignore`, `README.md` |
+| 3 | C `supabase/migrations/0007_push_tokens.sql`, `src/lib/push.ts` (permission, channel, register, listeners), `src/lib/api/pushTokens.ts`, `src/components/NotificationsBanner.tsx` + tests. M `src/SignedInApp.tsx` (open a request from a tap; register on family sign-in, unregister on sign-out), checks SQL, `.gitignore` (`google-services.json`). Not in git: `android/app/google-services.json` |
+| 4 | C `supabase/functions/send-alert/index.ts`, `supabase/migrations/0008_alert_sent.sql` (`alert_sent_at`). M `src/lib/api/requests.ts` (invoke the function), `src/pages/{CreateRequest,ElderHome}.tsx` ("Alert may not have reached" + Retry), `src/test/fakeSupabase.ts` (fake `functions.invoke`), tests, `README.md` (deploy + secrets) |
+| 5 | M whatever real-phone tests show is broken; `docs/LEARNING_GUIDE.md` (Android failure table) |
+| 6 | M `README.md`, `docs/DEMO_SCRIPT.md`, `docs/DISCLOSURE.md`, `docs/DEPLOY.md` (Android/APK section), `docs/LEARNING_GUIDE.md` |
 
-## 3. Data model (draft — implemented in Phase 3)
+## 3. Data model changes
 
 ```
-profiles        id uuid PK→auth.users | role 'elder'|'family' (set once) | display_name 1–40 | created_at
-pairing_codes   code text PK (8 chars, no confusable chars) | elder_id → profiles | expires_at (now()+10 min) | used_at | used_by
-family_links    id PK | elder_id UNIQUE → profiles | family_id → profiles | created_at | CHECK elder_id <> family_id
-money_requests  id PK | elder_id | family_id (copied server-side from family_links) | amount_inr int CHECK 1..100000
-                | recipient text 3–100 | note ≤200 null | status 'pending'|'approved'|'rejected'
-                | created_at | expires_at | responded_at
+profiles, family_links, pairing_codes   unchanged from Flod (0001–0005)
+money_requests   − recipient, − note                         (0006)
+                 + alert_sent_at timestamptz null             (0008)
+push_tokens      token text PK | user_id → profiles (on delete cascade) | updated_at   (0007)
+                 RLS enabled and NO policies: app users cannot read or write it directly
 ```
 
-- **RLS (read):** own profile + linked person's profile; pairing codes only to their creator; links only to their two members; requests only to their `elder_id` and `family_id`.
-- **Four UI states:** `pending`, `approved`, `rejected`, `expired`. `expired` is **derived** (`pending` and now > `expires_at`) and enforced by the respond function refusing late answers. Phase 7 decides whether to also store it.
-- **As built (Phase 3):** matches this draft. Additions: `pairing_codes.used_by` cascades on delete; `money_requests` has `responded_matches_status`, `not_self` and `expiry_after_creation` checks; `pgcrypto` used for random codes.
+| Function | Change | Rule |
+|---|---|---|
+| `create_money_request(p_amount_inr, p_timeout_seconds)` | replaces the 4-argument Flod version (0006); old signature dropped | caller must be an elder with a link; amount 1–100000; receiver, status and times set by the database |
+| `respond_to_request(id, decision)` | unchanged | one conditional UPDATE: right request, sent to me, pending, not expired |
+| `register_push_token(p_token)` | new (0007) | family accounts only; always stores `auth.uid()`; if the token was saved for another account (same phone, new sign-in) it moves to the caller |
+| `unregister_push_token(p_token)` | new (0007) | deletes only the caller's own row; called on sign-out so a signed-out phone stops getting alerts |
+| Edge Function `send-alert` | new (Phase 4) | reads tokens and sets `alert_sent_at` with the server-side key; the app never can |
 
-### Pairing flow (in person, before an emergency)
-1. Sign up (email + password) → `create_my_profile(role, name)` (once; role immutable).
-2. Elder: `create_pairing_code()` → shows large code + warning "only show in person, never read it out on a call".
-3. Family: `redeem_pairing_code(code)` → one transaction checks caller is family, code valid/unused/unexpired, elder not already linked → inserts `family_links`, marks code used.
-4. Both screens show who they are linked to.
+**Why a new Supabase project:** 0006 drops columns the Flod web app needs. A separate project keeps Flod working as the backup demo. Migrations 0001–0005 are re-run there unchanged, then 0006+.
 
-## 4. Request lifecycle
+## 4. Alert lifecycle (browser → database → phone → back)
 
-1. **Create (elder):** client validation → `create_money_request(amount, recipient, note, timeout_seconds)`; server re-validates, looks up `family_id`, clamps timeout to 15–600 s, sets `expires_at` from **database time**, inserts `pending`.
-2. **Deliver (family):** `select` on `money_requests` — RLS returns only rows for this family member; Realtime + refetch on focus.
-3. **Respond (family):** `respond_to_request(id, decision)` = one conditional `UPDATE … WHERE id = $1 AND family_id = auth.uid() AND status = 'pending' AND expires_at > now()`; zero rows → clear error. Blocks duplicates, late answers, wrong users, reverting to pending.
-4. **Back to elder:** Realtime subscription on own request; polling every ~4 s if the channel is not subscribed; failed polls show a connection message.
-5. **Timeout:** client countdown from `expires_at` with server-clock offset; at zero → "Unconfirmed" warning, next step, best-effort Web Audio beep (unlocked by the Send tap). DB refuses later answers.
+1. **Elder sends:** types the amount → client validation → `create_money_request(amount, 60)` → database copies `family_id` from `family_links`, stores `pending`, sets `expires_at` from **database time**.
+2. **Elder's app asks for the alert:** `supabase.functions.invoke('send-alert', { body: { request_id } })`, carrying the elder's login token.
+3. **send-alert (server):**
+   1. Verify the login token; get the caller's id.
+   2. Read the request **as the caller** (RLS applies): must exist, `elder_id` = caller, `pending`, not expired.
+   3. Claim it with a conditional update: `alert_sent_at = now() WHERE id = … AND alert_sent_at IS NULL`. Zero rows → already sent; return without sending again.
+   4. Look up `push_tokens` for that request's `family_id`.
+   5. For each token, call FCM HTTP v1 `messages:send`: Android priority **high**, channel `money-alerts`, title "Money alert from Asha (demo)", body "Asha is being asked to send ₹25,000. Call her on a number you already trust, then answer in Notme.", data `{ request_id }`.
+   6. Delete tokens FCM reports as invalid. If **every** send failed, release the claim (`alert_sent_at = null`) so Retry can work. Return how many were sent.
+4. **Family phone:** high-importance channel → heads-up notification with sound, even if the app is closed. If the app is open, the in-app inbox updates through Realtime as in Flod.
+5. **Family answers:** tap → app opens that request → **Confirm** or **Reject** → `respond_to_request` (unchanged; duplicates, late answers and other accounts are refused by the database).
+6. **Back to the elder:** Realtime (polling every 4 s as fallback) → Confirmed: "Your family member confirmed this request." Rejected or no answer by the deadline: large Pause warning, best-effort beep, next step.
+7. **If step 2 fails:** the request still exists and the family member still sees it when they open Notme. The elder sees "Alert may not have reached your family. Call them on a number you trust." with **Retry**.
 
-**Wording:** approved = "Your linked family member confirmed this request." (never "safe"). Rejected/expired = "Pause. This request has not been confirmed. Contact your family member using a number you already trust."
+**Four request states, unchanged:** `pending`, `approved`, `rejected`, and `expired` (derived: pending + deadline passed; enforced by `respond_to_request`).
+
+**Wording rules:** a confirmation never says "safe"; no answer never says "scam".
 
 ## 5. Risks and fallbacks
 
-| Risk | Mitigation |
+| Risk | Mitigation / fallback |
 |---|---|
-| Service-role key leak | Only publishable/anon key in browser; `.env*` ignored except `.env.example`; bundle scan in Phase 8 |
-| Missing RLS | RLS on all tables; `rls_checks.sql` impersonates a third user |
-| `security definer` misuse | `auth.uid()` checks, `set search_path = ''`, revoke from `anon`/`public` |
-| Protected column edits | No INSERT/UPDATE policies; functions touch only `status`, `responded_at` |
-| Duplicate / late responses | Conditional update |
-| Pairing social engineering | In-person warning, single-use 10-min code, one link per elder, linked name on every request — limitation documented |
-| Code brute force | ~31⁸ space + 10-min life; **no rate limit** (limitation) |
-| Compromised family account | Out of scope — limitation |
-| Wrong phone clock | DB time enforces; client only displays |
-| XSS via note | React escaping; never `dangerouslySetInnerHTML` |
-| Sound blocked | Visual warning always; sound is extra |
+| Android Studio not installed; multi-GB download on venue Wi-Fi | Start now; phone hotspot if needed. Fallback: the web app in each phone's Chrome (works today, no push) |
+| Capacitor/Gradle build errors | Follow current Capacitor 8 docs; emulator as second device; rescue prompt "Android build problem" |
+| Firebase setup mistakes | Phase 3 proves delivery with a Firebase console test message **before** any server code |
+| FCM service-account key leaks | Only in Supabase Edge Function secrets; `.gitignore` covers `*service-account*.json` and `google-services.json`; secret scan of bundle and git history in Phase 5. (Supabase's own example keeps the key as a file next to the function; we do not.) |
+| Push delayed or dropped (Doze, Xiaomi/Vivo/Oppo/Realme battery savers, Do Not Disturb, permission denied) | High priority + high-importance channel; test on the actual demo phones; "notifications are off" banner; the database, inbox and Realtime stay the truth; the elder's timeout warning covers "no answer" |
+| Someone abuses `send-alert` (spam, or alerts for another person's request) | Login required; caller must own the pending request; receiver read from the database, not the request body; at most one successful alert per request |
+| Elder's app loses network right after creating the request | "Alert may not have reached" + Retry; family still sees it in the inbox |
+| Shared or signed-out phone keeps getting alerts | `unregister_push_token` on sign-out; a token moves to whoever registers it last |
+| Lock-screen privacy | Payload limited to display name + amount; documented. PIN before Confirm is a stretch item |
+| Sideloaded APK looks like a scam app | Demo only, said openly; real users would install from the Play Store |
+| Supabase free-tier limits / project pausing | Fresh project today; Flod project kept as backup |
+| Compromised family account | Out of scope; documented limitation (stretch: PIN, more contacts) |
+| Wrong phone clock | Database time decides expiry; client only displays (Flod `0005`) |
 
-**External dependencies:** Supabase free tier (email rate limits → disable "Confirm email" for demo; inactive projects pause → open it the day before; fallback: local Docker Supabase). Realtime → polling fallback. Venue network → phone hotspot / local backup. Hosting → any static host or local dev server.
+**External services:** Supabase (free tier), Firebase Cloud Messaging (free), Google's servers carry the push payload.
 
-**Unknowns:** Devpost submission rules (403 when fetched), exact build-window times, teammates' accounts, hosting choice.
+**Unknowns:** official build-window end time and submission requirements (Devpost blocked to tools); which Android phones/OEMs the team will demo on; whether venue Wi-Fi blocks FCM (port 5228 and others; mobile data as fallback).
 
-## 6. Hackyard Build 2026 — verified rules (checked 2026-10-21)
+## 6. Hackyard Build 2026 — rules (re-checked 2026-10-24)
 
-Sources (pages say "Last updated: 22 September 2026"):
+Sources, both "Last updated: 22 September 2026":
 - https://hackyard.org/build2026/rules
 - https://hackyard.org/build2026/guide
-- https://hackyard.org/build2026/faq
-- https://hackyard.org/build2026
 
 **Verified:**
-- 24-hour in-person hackathon, IIT Guwahati, **24–25 October 2026**. No start/end time or timezone published on these pages.
-- Pre-existing libraries, tools, designs and project foundations are **allowed if disclosed**; teams must separate pre-event work from work done in the official window; reused foundations must be meaningfully transformed onsite; **undisclosed pre-built work** is a disqualification ground. Judging focuses on onsite work.
-- AI, open source, APIs allowed "when their terms permit the use", with important dependencies disclosed. **No coding-assistant-specific rule or disclosure format** is stated.
-- Teams: solo or 2–4. Judging: Build 40 %, Problem 20 %, Ingenuity 20 %, Potential 20 %; "Judge the build, not the pitch."
-- Use synthetic, public, or authorised data; do not expose secrets.
-- Applying is free; FAQ says package pricing is emailed to selected builders. No page mentions bank details.
+- 24-hour in-person hackathon at IIT Guwahati, 24–25 October 2026.
+- "Pre-existing libraries, tools, designs, datasets and project foundations may be used when disclosed."
+- "Teams must clearly identify what existed before the event and what they built during the official window."
+- "A reused foundation must be transformed through meaningful onsite work." Undisclosed pre-built work can lead to disqualification.
+- "AI, open source, APIs and hardware are allowed when their terms permit the use." No coding-assistant-specific rule.
+- "Use public, synthetic or authorized data."
+- Guide: "If you already have a prototype, you can include a public link in the optional work-link field."
 
-**Not verified:** https://hackyardbuild2026.devpost.com/ returned HTTP 403 — submission requirements (repo, video, deadline, screenshots) are **unknown** until a teammate checks it in a browser. Prizes/conduct pages not read.
+**Not stated on those pages:** start/end times, timezone, submission requirements (repo, video, deadline). https://hackyardbuild2026.devpost.com/ returned HTTP 403 again on 2026-10-24. **A teammate must open it in a browser** and note the deadline and required fields here.
 
-**Implication:** all work before 24 Oct is logged as `[pre-event]` in `docs/BUILD_LOG.md`; tag the Git commit at the official start.
+**How we stay compliant:** the git tag `pre-event-end` (commit `f710e6f`) marks the last pre-event commit; `2f3f631` is a clearly labelled late commit of two pre-event docs; every later commit ends with `(onsite)`; `docs/DISCLOSURE.md` lists what came from Flod.
 
-## 7. Assumptions (accepted with the plan)
+## 7. Assumptions (accepted with the plan unless the user says otherwise)
 
-1. Email + password auth; email confirmation disabled for demo; synthetic test emails (`elder1@example.com`).
-2. One trusted relative per elder; elder generates code, relative redeems.
-3. Whole rupees ₹1–₹1,00,000 (demo cap); demo timeout default 60 s, single config value.
-4. `expired` derived from `expires_at` + enforced by respond function.
-5. Realtime first, polling fallback.
-6. Prompts file renamed to `PROMPTS.md` (matches the project brief) when the project was renamed to Flod.
+1. One linked family member per elder (Flod's model). More contacts = stretch.
+2. The family member answers **Confirm** or **Reject** (Flod's `respond_to_request`, unchanged).
+3. The elder sends **amount only**: the recipient and note columns and parameters are removed (0006).
+4. A **new Supabase project** for Notme; the Flod project and web demo stay untouched as the backup.
+5. One APK for both roles; the role is chosen once at sign-up (Flod).
+6. Push goes only to the family member; the elder sees the answer in the app.
+7. The elder's app calls `send-alert` right after creating the request (no database webhook). Limitation: if the app dies in between, no push; the request still shows in the family inbox.
+8. Demo timeout stays 60 seconds (`src/config.ts`), labelled as a demo value.
+9. Debug APK installed over USB for the demo; no Play Store.
+10. Push text uses only the demo display name and amount.
 
-## 8. Phase acceptance checklists
+## 8. Time plan (estimates; adjust once the deadline is known)
+
+| Phase | Estimate | Blocked by |
+|---|---|---|
+| 1 Amount-only + rename | 1–1.5 h | new Supabase project (user, ~10 min) |
+| 2 Android app | 1.5–2 h | Android Studio installed; USB debugging on a phone |
+| 3 Push on the family phone | 1.5–2 h | Firebase project (user, ~15 min) |
+| 4 Edge Function alert | 2–3 h | Firebase service-account key into Supabase secrets (user) |
+| 5 Real-phone safety pass | 1.5–2 h | two devices |
+| 6 Demo readiness | 1.5–2 h | Devpost requirements (teammate) |
+
+## 9. Phase acceptance checklists
+
+### Phase 0
+- [x] the project brief and `PROMPTS.md` rewritten for the Notme Android app
+- [x] Official rules re-checked and cited; unknowns listed
+- [x] Current Capacitor 8, push-notification and Supabase Edge Function docs read
+- [x] This plan: architecture, phases/files, data model, lifecycle, risks, assumptions
+- [x] Import of Flod logged in `docs/BUILD_LOG.md`; `docs/DISCLOSURE.md` updated
+- [x] `docs/LEARNING_GUIDE.md` Part B outline
+- [ ] Plan approved by the user
 
 ### Phase 1
-- [x] `npm install` and `npm run dev` work
-- [x] App renders at 375 px and desktop width
-- [x] `npm run lint`, `npm run typecheck`, `npm test` pass
-- [x] Types `UserRole`, `RequestStatus`, `MoneyRequest` exist
-- [x] `.env*` ignored by Git (except `.env.example`)
-- [x] Git initialised; initial commit made
+- [ ] No "Flod" left in app UI, `package.json`, `index.html` or README (history and `presentation/` excepted)
+- [ ] `0006` removes recipient and note; amount-only `create_money_request`; old signature dropped; re-runnable
+- [ ] Types, form, cards, detail screens, mocks, fake and tests have no recipient/note
+- [ ] `rls_checks.sql` / `deploy_checks.sql` updated; pass on the new project (user)
+- [ ] Lint, typecheck, tests, build pass (exact results logged)
+- [ ] Manual two-browser check on the new project (user)
 
 ### Phase 2
-- [x] Create request → appears in mock inbox → approve/reject → elder sees status
-- [x] Invalid/empty amounts rejected with helpful text
-- [x] Waiting / approved / rejected / expired / empty / error states
-- [x] Tests for validation and status display; mock limitation visible (header banner + README)
+- [ ] Capacitor 8 added; `capacitor.config.ts` with `webDir: 'dist'`; `android/` created
+- [ ] App runs on a real phone; sign-in persists after closing
+- [ ] Realtime/polling, timeout warning and beep work on the phone
+- [ ] Back button, 200% font, no horizontal scroll checked
+- [ ] Phone ↔ other device flow works (user)
 
 ### Phase 3
-- [x] Migrations in `supabase/migrations/` are reviewable and repeatable (applied twice in a row without errors on PGlite / PostgreSQL 18)
-- [x] RLS enabled on every table; least-privilege SELECT policies only
-- [x] Writes only via narrowly scoped `security definer` functions (same rules as `src/mock/mockStore.ts`)
-- [x] `supabase/checks/rls_checks.sql`: 36 checks incl. a third unrelated account and a second elder; 36/36 PASS on PGlite with a Supabase stand-in
-- [x] No secret in frontend code, Git history or `.env.example`
-- [x] Remote DB state reported honestly: **not yet applied to a real Supabase project** (user does README steps 1–6)
-- [x] User applies migrations on their Supabase project and sees 36 × PASS (manual, reported by the user on 2026-10-23)
+- [ ] Firebase project + `google-services.json` (not in git)
+- [ ] Permission asked with an explanation (Android 13+); `money-alerts` channel, high importance, sound
+- [ ] Token saved via `register_push_token`; removed on sign-out; no client read access (RLS checks)
+- [ ] Console test message received in foreground, background and closed states
+- [ ] Tap opens the request; "notifications off" banner works
 
 ### Phase 4
-- [x] Sign up / sign in with Supabase Auth (email + password); general sign-in error; network error shown
-- [x] Role chosen once and stored by `create_my_profile` (not trusted from client state); name 1–40 chars
-- [x] Elder gets a single-use 10-minute code from the database; in-person warning; countdown
-- [x] Family member redeems the code; invalid / used / expired / network messages shown
-- [x] Relationship stored in `family_links`, read through RLS; both sides show who they are linked to
-- [x] Automated: 7 gate tests against an in-memory fake; lint, typecheck, 52/52 tests, build pass
-- [x] Manual: two accounts in two browsers linked on the real Supabase project (README checklist) — user, 2026-10-23
-- [x] Manual: an unrelated third account cannot link with a used code or see the pair — user, 2026-10-23
-- Demo shortcut: none added.
+- [ ] `send-alert` deployed; FCM key only in Supabase secrets
+- [ ] Two devices: amount sent → push within seconds (app in background) → tap → Confirm/Reject → elder updates live
+- [ ] Third account cannot trigger an alert for someone else's request; second call does not send twice
+- [ ] Invoke failure shows "Alert may not have reached" + Retry
 
 ### Phase 5
-- [x] Request creation goes through `create_money_request` (client + database validation; receiver, status and times set by the database)
-- [x] Family inbox lists only requests RLS returns for that account (no client-side filtering)
-- [x] Loading, success, empty and failure UI; a failed send never shows as success; failed refresh keeps the old list
-- [x] Requests reappear after reload; new ones appear on **Check for new requests** / returning to the tab
-- [x] Automated: lint, typecheck, 54/54 tests, build pass
-- [x] Manual: create in one browser, see it in the linked family member's browser on the real project (README checklist) — user, 2026-10-23
-- Confirm/Reject deliberately not connected yet (Phase 6).
+- [ ] Android failure table filled from real tests
+- [ ] Rejection and timeout always show the visual warning
+- [ ] TalkBack, 200% font, tap targets checked
+- [ ] RLS/deploy checks re-run on the Notme project (user); bundle and git history secret scan
 
 ### Phase 6
-- [x] Family member sees amount, recipient, note, creation time and expiry; separate Confirm / Reject
-- [x] Answers go through `respond_to_request` only; duplicates, late answers and wrong users refused by the database (rls_checks 36/36 on the hosted project); UI shows the saved result, not a guess
-- [x] Realtime subscription with clean-up on unmount; reconnect handled; polling fallback every 4 s; failed checks shown as "Can't reach the server… don't pay", recovering by itself
-- [x] Elder's status never implies the recipient is safe
-- [x] Automated: lint, typecheck, 71/71 tests, build; `0004` re-runnable on PGlite
-- [x] User runs `0004_realtime.sql` on the hosted project — user, 2026-10-23
-- [x] Manual: an answer in one browser appears in the other without Refresh (README checklist) — user, 2026-10-23
-
-### Phase 7
-- [x] Demo timeout is one config value (60 s), labelled in the UI as a demo value
-- [x] Expired = pending + deadline passed, shown as "Unconfirmed"; **enforced by the database** (`respond_to_request`), displayed by the client with server-time correction (`0005`)
-- [x] Rejection/timeout: large high-contrast Pause warning on the request screen and on Home; best-effort beep; clear next step
-- [x] Wording: no reply ≠ fraud; approval ≠ safe recipient
-- [x] Failure tests: refresh, slow network, disconnected, closed family browser (= expiry), late response, duplicate click, sound blocked, wrong clock
-- [x] Accessibility: labels, focus ring + focus management, ≥ 48 px tap targets, contrast measured, status never colour-only
-- [x] Automated: lint, typecheck, 80/80 tests, build; `0005` re-runnable and anon-refused on PGlite
-- [x] User runs `0005_server_time.sql` on the hosted project — user, 2026-10-23
-- [x] Manual checklist (beep heard, keyboard only, zoom 200%, screen reader, wrong clock) — user, 2026-10-23
-
-### Phase 8
-- [x] Reviewed against every acceptance criterion in the project brief and this plan (BUILD_LOG Phase 8)
-- [x] Tests for validation, state transitions, amounts, authorization assumptions (what the browser sends), expiry; automated vs manual separated (README "What the tests cover")
-- [x] Lint, typecheck, 88/88 tests, production build: exact results in BUILD_LOG
-- [x] 375 px and desktop checked (signed-in screens via a temporary fake-backed preview); one bug fixed (Home alert after opening a request)
-- [x] Secret review: `.gitignore`, env files, bundle, Git history, SQL policies
-- [x] LEARNING_GUIDE complete (reading path in required order, file-by-file, glossary, diagrams, common errors, rebuild checklist, judge Q&A)
-- [x] DEMO_SCRIPT (90 s + 3 min, synthetic data, approval + rejection + timeout)
-- [x] README: setup, env vars, migrations, tests, limitations, prototype statement
-- [ ] Quiz attempted by the user, graded, saved to the guide — **pending**
-- [ ] User re-runs Phase 7 checklist step 2 — **pending**
-
-### Phase 9
-- [x] Current host docs checked; simplest route chosen (Netlify Drop; Vercel as alternative) — `docs/DEPLOY.md`
-- [x] Env-var handling explained; no secrets in chat, Git or the bundle
-- [x] Production build verified locally (`npm run build` + `npm run preview`)
-- [x] Exact manual tests from a real phone on mobile data written (`docs/DEPLOY.md`)
-- [x] RLS / policies / function rights check: `supabase/checks/deploy_checks.sql` (26 rows), verified on PGlite incl. deliberate breaks
-- [x] Supabase-unavailable behaviour: "Can't reach the server… don't pay" + Try again (automated tests; live check in DEPLOY.md)
-- [x] Backup demo plan without campus Wi-Fi, simulations clearly labelled
-- [x] Disclosure list: pre-event / onsite / third-party / AI (`docs/DISCLOSURE.md`), no invented format
-- [ ] User deploys and runs the live checks; live URL recorded only after that — **pending**
-- [ ] User runs `deploy_checks.sql` on the hosted project — **pending**
-- [ ] Teammate checks Devpost submission rules in a browser — **pending**
+- [ ] Debug APK installed on the demo phones from a clean start
+- [ ] README, DEMO_SCRIPT, DISCLOSURE, DEPLOY and LEARNING_GUIDE match what works
+- [ ] Backup plan (hotspot; Flod web app, labelled) rehearsed
+- [ ] Devpost requirements checked by a teammate and met
