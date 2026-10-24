@@ -410,3 +410,16 @@ Phase 3's last manual check is now ticked in `docs/PLAN.md`. Correction to the r
 **Not run:** the SQL (0006 and both check scripts) has **not been executed anywhere yet**. A local PGlite check was proposed and declined by the user, so the first run is the user's, on the new Notme Supabase project (README steps 1–7). The manual two-browser test on that project is also the user's.
 
 **AI assistance disclosure:** migration, code, test and doc changes written by the AI assistant under the user's direction; awaiting the user's Supabase setup and manual test.
+
+Committed as `11504dc` `(onsite)`.
+
+**Run by the user on 2026-10-24 (reported in chat; the AI assistant did not see the project):**
+
+| Check | Result |
+|---|---|
+| New Supabase project for Notme created; migrations 0001–0006 applied | ✅ |
+| `supabase/checks/rls_checks.sql` | ✅ 37/37 PASS (includes the stranger, other-elder, logged-out, late-answer and "old recipient/note version is gone" checks) |
+| `supabase/checks/deploy_checks.sql` | ✅ 28/28 PASS (includes "no recipient or note column" and "old create_money_request removed") |
+| README "Manual test: amount-only alert on the new Notme project" (two browser windows) | ✅ worked |
+
+So the SQL in 0006 has now run on a real Supabase project. The Flod project was left untouched as the backup.

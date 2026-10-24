@@ -6,7 +6,7 @@
 ## Progress
 
 - [x] **Phase 0** — Onsite plan, rules re-check, docs *(2026-10-24; approved)*
-- [ ] **Phase 1** — Rename to Notme; amount-only request (web) *(code + automated checks done 2026-10-24; SQL not yet run; user to set up the new Supabase project and do the manual test)*
+- [x] **Phase 1** — Rename to Notme; amount-only request (web) *(code + automated checks 2026-10-24, commit `11504dc`; new Supabase project, 37/37 RLS checks, 28/28 deploy checks and the manual two-browser test passed, reported by the user 2026-10-24)*
 - [ ] **Phase 2** — Android app with Capacitor
 - [ ] **Phase 3** — Push notifications on the family phone
 - [ ] **Phase 4** — Server sends the alert (Edge Function)
@@ -183,13 +183,13 @@ Sources, both "Last updated: 22 September 2026":
 
 ### Phase 1
 - [x] No "Flod" left in app UI, `package.json`, `index.html` or README (history, pre-event migration headers and `presentation/` excepted)
-- [x] `0006` removes recipient and note; amount-only `create_money_request`; old signature dropped; written to be re-runnable (`if exists`, `create or replace`) — **not yet executed**
+- [x] `0006` removes recipient and note; amount-only `create_money_request`; old signature dropped; written to be re-runnable (`if exists`, `create or replace`); applied on the new Notme project (user, 2026-10-24)
 - [x] Types, form, cards, detail screens, mocks, fake and tests have no recipient/note
 - [x] `rls_checks.sql` (37) / `deploy_checks.sql` (28) updated
-- [ ] Both check scripts pass on the new Notme project (user)
+- [x] Both check scripts pass on the new Notme project: 37/37 and 28/28 PASS (user, 2026-10-24)
 - [x] Lint, typecheck, 87/87 tests, build pass (exact results logged)
 - [x] Screens checked at 375 px with the in-memory fake
-- [ ] Manual two-browser check on the new project (user)
+- [x] Manual two-browser check on the new project (user, 2026-10-24)
 
 ### Phase 2
 - [ ] Capacitor 8 added; `capacitor.config.ts` with `webDir: 'dist'`; `android/` created
