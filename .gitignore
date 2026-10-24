@@ -36,4 +36,5 @@ supabase/.branches
 
 # Kept local on purpose (not shared in the repository)
 presentation/
+Learning/
 PROMPTS.md
