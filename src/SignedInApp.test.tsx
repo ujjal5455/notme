@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { playAlertSound } from './lib/alertSound'
 import { SignedInApp } from './SignedInApp'
@@ -9,7 +9,11 @@ vi.mock('./lib/supabaseClient', async () => ({
   supabase: (await import('./test/fakeSupabase')).fake.supabase,
 }))
 // Replace the beep with a recorder, so tests can check WHEN the app tries to beep.
-vi.mock('./lib/alertSound', () => ({ playAlertSound: vi.fn(() => false), unlockAlertSound: vi.fn() }))
+vi.mock('./lib/alertSound', () => ({
+  playAlertSound: vi.fn(() => false),
+  unlockAlertSound: vi.fn(),
+  startAlarmLoop: vi.fn(() => () => {}), // the family overlay's looping alarm (onsite E2)
+}))
 
 let asha: Profile
 let ravi: Profile
@@ -218,6 +222,48 @@ describe('SignedInApp (Phase 6: answers and live updates)', () => {
     fake.state.realtime = 'fail'
     await renderAsElder()
     expect(await screen.findByText(/checking for updates every few seconds/i)).toBeInTheDocument()
+  })
+})
+
+describe('SignedInApp (onsite E2: the family alarm overlay)', () => {
+  it('a waiting request covers the family screen until "Stop alarm"', async () => {
+    await savedRequest()
+    await renderAsFamily()
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent(/asha \(demo\) is being asked to send ₹2,500/i)
+    click('Stop alarm')
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    // The request is still there to answer.
+    expect(screen.getByRole('button', { name: /₹2,500/ })).toBeInTheDocument()
+  })
+
+  it('"Open request" goes straight to the request, and the alarm stays off', async () => {
+    await savedRequest()
+    await renderAsFamily()
+    await screen.findByRole('alertdialog')
+    click('Open request')
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Confirm request' })).toBeInTheDocument()
+  })
+
+  it('a new request arriving while Notme is open brings it up by itself', async () => {
+    await renderAsFamily()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    await fake.signInAs('elder1@example.com')
+    await fake.supabase.rpc('create_money_request', { p_amount_inr: 700 })
+    await fake.signInAs('family1@example.com')
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent('₹700')
+  })
+
+  it('disappears when the request is answered elsewhere, and the elder never gets it', async () => {
+    const id = await savedRequest()
+    await renderAsFamily()
+    await screen.findByRole('alertdialog')
+    await fake.supabase.rpc('respond_to_request', { p_request_id: id, p_decision: 'rejected' })
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    cleanup()
+
+    await renderAsElder()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 })
 

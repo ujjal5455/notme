@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { ConnectionNotice } from './components/ConnectionNotice'
+import { IncomingAlertOverlay } from './components/IncomingAlertOverlay'
 import { Layout } from './components/Layout'
 import { NotificationsBanner } from './components/NotificationsBanner'
 import { QuickAccessBanner } from './components/QuickAccessBanner'
 import { REQUEST_TIMEOUT_SECONDS } from './config'
 import { useBackButton } from './hooks/useBackButton'
+import { useIncomingAlert } from './hooks/useIncomingAlert'
 import { useMyRequests } from './hooks/useMyRequests'
 import { useNewWarnings } from './hooks/useNewWarnings'
 import { useNow } from './hooks/useNow'
@@ -54,6 +56,9 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
   // Elder: how the phone alert for each request went (onsite, Phase 4). Kept only
   // while the app is open; after a reload the saved alertSentAt shows "sent".
   const [alerts, setAlerts] = useState<Record<string, AlertState>>({})
+  // Family member: the newest waiting request they haven't acknowledged takes over
+  // the screen with the red alarm overlay (onsite, backlog E2/E3).
+  const incoming = useIncomingAlert(requests, nowMs, role === 'family')
 
   // Browsers only allow sound after the person has tapped or typed on the page,
   // so unlock the warning beep at their first tap or key press.
@@ -88,6 +93,11 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
   // Android's Back button: from any other screen, go to this person's home
   // screen; on the home screen, let the hook minimise the app.
   useBackButton(() => {
+    // While the red alarm overlay is up, Back means "Stop alarm".
+    if (incoming.alert) {
+      incoming.acknowledge(incoming.alert.id)
+      return true
+    }
     const home = homeFor(role)
     if (view.name === home.name) return false
     goTo(home)
@@ -96,11 +106,13 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
 
   function openRequest(requestId: string) {
     markSeen(requestId)
+    incoming.acknowledge(requestId) // opening it means the alarm has done its job
     goTo({ name: 'requestDetail', requestId })
   }
 
   // Family member on Android: alerts that ring the phone, and tapping one opens the request.
-  const push = usePushNotifications(role === 'family', openRequest)
+  // An alert arriving while Notme is open refreshes the list at once, so the overlay appears.
+  const push = usePushNotifications(role === 'family', openRequest, () => void refetch().catch(() => {}))
   // Elder on Android: a quick button in the notification shade that opens "Send a money alert".
   const quick = useQuickAccess(role === 'elder', familyMember.displayName, () => goTo({ name: 'createRequest' }))
 
@@ -207,6 +219,7 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
 
   // Only the first load blocks the screen; later reloads keep the list visible.
   const showLoading = loading && view.name !== 'createRequest' && view.name !== 'about'
+  const alertRequest = incoming.alert
 
   return (
     <Layout
@@ -232,6 +245,15 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
         </p>
       ) : (
         renderPage()
+      )}
+      {alertRequest && (
+        <IncomingAlertOverlay
+          request={alertRequest}
+          elderName={elder.displayName}
+          nowMs={nowMs}
+          onOpen={() => openRequest(alertRequest.id)}
+          onStop={() => incoming.acknowledge(alertRequest.id)}
+        />
       )}
     </Layout>
   )

@@ -15,6 +15,7 @@ Built at **Hackyard Build 2026** on top of the team's **pre-event** web prototyp
 - **Onsite Phase 4:** the `send-alert` Edge Function rings the family member's phone automatically when the elder taps Send (`0008_alert_sent.sql`, `0009_service_role_grants.sql`; see **Automatic alerts** below). Deployed and tested on two devices.
 - **Onsite extra (E4 a):** the elder's quick button in the notification shade; see **Elder's quick button** below.
 - **Onsite extra (E1):** the family phone rings with Notme's own 30-second alarm (tested on the phone with Notme in the background and closed); see **Alarm-like ringing** below.
+- **Onsite extras (E2 + E3):** a red full-screen alarm overlay with looping sound and vibration when Notme is open; see **Red alarm overlay** below.
 
 See [`docs/PLAN.md`](docs/PLAN.md) for progress and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md) for what was done and tested.
 
@@ -215,6 +216,18 @@ Alerts from `send-alert` use the **`money-alarm`** channel, which rings with Not
 3. Press Home; the elder sends an alert → the phone plays the beep-beep alarm for up to **30 seconds**. Tapping or clearing the notification stops it.
 4. Try with the phone **locked**, and with Notme **closed**.
 5. *(Expected limits)* Silent mode / Do Not Disturb can mute it; it plays at **notification** volume.
+
+## Red alarm overlay and vibration on the family phone (onsite, backlog E2 + E3)
+
+When a request is waiting and the family member hasn't looked at it yet, Notme covers the whole screen with a **red warning**: who is being asked, the amount, "call them on a number you already trust", the time left, **Open request** and **Stop alarm**. While it shows, the phone plays the beep-beep alarm and **vibrates** (1 s buzz every 1.5 s) for up to 30 seconds. **Stop alarm**, **Open request**, Escape or the phone's **Back** button stop it. While Notme is open, the phone no longer also posts a system notification, so only one alarm plays; in the background or closed, the notification and its 30-second alarm work as before.
+
+### Manual test (overlay)
+1. Install the new build (`npm run android:sync` → **Run ▶**); sign in on the phone as the **family member**; keep Notme **open** on the inbox.
+2. The elder sends an alert → within a second or two the **red overlay** covers the screen, the alarm plays and the phone vibrates. No extra system notification sound.
+3. **Stop alarm** → the overlay closes; the request is still in the inbox.
+4. Send another → press the phone's **Back** → it stops too. Send another → **Open request** → the request screen with Confirm / Reject.
+5. With Notme **closed**, send one, tap the notification → Notme opens (the overlay shouldn't ring again for that request).
+6. Turn the **media volume** up first: the in-app alarm uses media volume, not the ringer.
 
 ## Elder's quick button during a call (onsite, backlog E4 option a)
 

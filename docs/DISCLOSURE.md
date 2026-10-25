@@ -19,19 +19,19 @@ This document therefore does **not** claim to follow a required format; it is si
 
 | Commit | Date | What |
 |---|---|---|
-| `9a7fee6` | 2026-10-21 | Phases 0–1: plan, docs, React + TypeScript scaffold with mock screens |
-| `896e38c` | 2026-10-21 | Phases 2–3: mock request flow; database schema, RLS, functions; rename to Flod |
-| `dce5b68` | 2026-10-23 | Phase 4: authentication and pairing |
-| `dee1c0c` | 2026-10-23 | Phase 5: requests saved and delivered |
-| `3194780` | 2026-10-23 | Phase 6: confirm/reject and live updates |
-| `b0e3b9d` | 2026-10-23 | Phase 7: timeout, warnings, accessibility, failure handling |
+| `8e0d510` | 2026-10-21 | Phases 0–1: plan, docs, React + TypeScript scaffold with mock screens |
+| `2fb62c6` | 2026-10-21 | Phases 2–3: mock request flow; database schema, RLS, functions; rename to Flod |
+| `9e46a68` | 2026-10-23 | Phase 4: authentication and pairing |
+| `4789fdb` | 2026-10-23 | Phase 5: requests saved and delivered |
+| `8a24c76` | 2026-10-23 | Phase 6: confirm/reject and live updates |
+| `6b9bd51` | 2026-10-23 | Phase 7: timeout, warnings, accessibility, failure handling |
 | (later commits) | 2026-10-23 | Phases 8–9: tests, docs, demo script, deployment notes, this file |
 
 **Plan for the event (as written on 2026-10-23):** the team intended to build a separate new project ("Notme") from scratch during the official window.
 
-**What actually happened (updated onsite, 2026-10-24):** the team decided not to start from scratch. The whole Flod project, including its git history, was copied into the Notme folder, and Notme is being built **on top of the Flod code**. So everything in Notme up to the git tag **`pre-event-end`** (commit `f710e6f`), plus commit `2f3f631` (two pre-event docs committed late, labelled `(pre-event)`), is **pre-event work from Flod**. Every later commit is labelled `(onsite)`; `git log --oneline pre-event-end..HEAD` lists them. Planned onsite transformation: amount-only alerts (no payee), an Android app (Capacitor), push notifications (Firebase Cloud Messaging), a server-side alert function (Supabase Edge Function), and testing on Android phones. This file is updated as that work lands.
+**What actually happened (updated onsite, 2026-10-24):** the team decided not to start from scratch. The whole Flod project, including its git history, was copied into the Notme folder, and Notme is being built **on top of the Flod code**. So everything in Notme up to the git tag **`pre-event-end`** (commit `c3380fa`), plus commit `13479f8` (two pre-event docs committed late, labelled `(pre-event)`), is **pre-event work from Flod**. Every later commit is labelled `(onsite)`; `git log --oneline pre-event-end..HEAD` lists them. Planned onsite transformation: amount-only alerts (no payee), an Android app (Capacitor), push notifications (Firebase Cloud Messaging), a server-side alert function (Supabase Edge Function), and testing on Android phones. This file is updated as that work lands.
 
-**Onsite work landed so far:** Phase 0 plan and docs (`c44e52b`); Phase 1 rename to Notme and amount-only requests, including the new migration `0006_amount_only.sql` (0001–0005 are unchanged pre-event files); Phase 2 Android app with Capacitor and the Back-button fix; Phase 3 push notifications (`0007`); Phase 4 the `send-alert` Edge Function (`0008`). The full list is `git log --oneline pre-event-end..HEAD`.
+**Onsite work landed so far:** Phase 0 plan and docs (`bedef88`); Phase 1 rename to Notme and amount-only requests, including the new migration `0006_amount_only.sql` (0001–0005 are unchanged pre-event files); Phase 2 Android app with Capacitor and the Back-button fix; Phase 3 push notifications (`0007`); Phase 4 the `send-alert` Edge Function (`0008`). The full list is `git log --oneline pre-event-end..HEAD`.
 
 ## 2. Third-party software
 
@@ -53,6 +53,7 @@ Versions as installed (`node_modules/*/package.json`). All are open source under
 | `@capacitor/core`, `@capacitor/android`, `@capacitor/cli` *(added onsite, Phase 2)* | 8.5.3 | MIT | Packaging the web app as an Android app |
 | `@capacitor/app` *(added onsite, Phase 2)* | 8.1.2 | MIT | Android Back button handling |
 | `@capacitor/push-notifications` *(added onsite, Phase 3)* | 8.1.3 | MIT | Push notifications through Firebase Cloud Messaging (brings Google's Firebase Messaging library into the Android build) |
+| `@capacitor/haptics` *(added onsite, backlog E3)* | 8.0.2 | MIT | Repeating vibration with the family alarm overlay; adds the Android permission `VIBRATE` |
 | `@capacitor/local-notifications` *(added onsite, backlog E4 a)* | 8.3.1 | MIT | The elder's quick button in the notification shade; adds the Android permissions `SCHEDULE_EXACT_ALARM`, `RECEIVE_BOOT_COMPLETED`, `WAKE_LOCK` |
 
 **Template:** the project configuration was copied from the official Vite `react-ts` template (create-vite 9.3.1, part of the Vite project, MIT) in Flod's Phase 1 (pre-event). **Onsite:** the `android/` folder was generated by the Capacitor CLI's Android template (`npx cap add android`, Capacitor 8.5.3, MIT); it uses Gradle 8.14.3 and the Android Gradle Plugin 8.13.0 (Apache-2.0), downloaded by the build.

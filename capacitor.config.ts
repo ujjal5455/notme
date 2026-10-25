@@ -13,9 +13,11 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   plugins: {
     PushNotifications: {
-      // Also show the alert (with sound) while Notme is open on screen.
-      // Capacitor's default shows nothing in the foreground on Android.
-      presentationOptions: ['alert', 'sound'],
+      // While Notme is open on screen, don't also post a system notification:
+      // the red alarm overlay (src/components/IncomingAlertOverlay.tsx) takes
+      // over instead, so the phone doesn't play two alarms at once (onsite E2).
+      // In the background or closed, Android shows the alert and rings as usual.
+      presentationOptions: [],
     },
   },
 }

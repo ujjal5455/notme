@@ -466,6 +466,64 @@ button:disabled {
   font-variant-numeric: tabular-nums; /* digits don't jump around as they change */
 }
 
+/* ---------- Family member's alarm overlay (onsite, backlog E2) ---------- */
+/* Full screen, solid red, white text (contrast about 9:1). No flashing. */
+.incoming-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem 1rem;
+  background: var(--color-rejected-text);
+  color: #ffffff;
+}
+
+.incoming-overlay h1 {
+  font-size: 2rem;
+  margin: 0;
+}
+
+.incoming-label {
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.incoming-overlay .time-left {
+  color: #ffffff;
+}
+
+.incoming-open,
+.incoming-stop {
+  width: 100%;
+  min-height: 3.5rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.incoming-open {
+  background: #ffffff;
+  color: var(--color-rejected-text);
+  border: 3px solid #ffffff;
+}
+
+.incoming-stop {
+  background: transparent;
+  color: #ffffff;
+  border: 3px solid #ffffff;
+}
+
+.incoming-overlay button:focus-visible {
+  outline: 4px solid #ffd54a;
+  outline-offset: 3px;
+}
+
 /* ---------- Phone alert status for the elder (onsite, Phase 4) ---------- */
 .alert-status {
   margin: 0.75rem 0;

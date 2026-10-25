@@ -82,6 +82,8 @@ export interface PushHandlers {
   onError: (message: string) => void
   /** The person tapped an alert that names a request. */
   onOpenRequest: (requestId: string) => void
+  /** An alert arrived while Notme was open (onsite E2: refresh at once, the overlay takes over). */
+  onReceived?: () => void
 }
 
 /** Starts listening, then asks FCM for the device token. Returns a function that stops listening. */
@@ -93,6 +95,7 @@ export async function startPush(handlers: PushHandlers): Promise<() => Promise<v
       const requestId: unknown = action.notification.data?.request_id
       if (typeof requestId === 'string' && requestId !== '') handlers.onOpenRequest(requestId)
     }),
+    PushNotifications.addListener('pushNotificationReceived', () => handlers.onReceived?.()),
   ])
   await PushNotifications.register()
   return async () => {

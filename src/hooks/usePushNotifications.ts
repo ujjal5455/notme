@@ -22,15 +22,21 @@ import {
  *
  * `enabled` is false for elders and in a normal browser, so nothing happens.
  */
-export function usePushNotifications(enabled: boolean, onOpenRequest: (requestId: string) => void) {
+export function usePushNotifications(
+  enabled: boolean,
+  onOpenRequest: (requestId: string) => void,
+  onReceived?: () => void,
+) {
   const [permission, setPermission] = useState<PushPermission>('unsupported')
   const [error, setError] = useState<string | null>(null)
   const token = useRef<string | null>(null)
 
-  // Always open requests with the newest callback (it knows the current screen).
+  // Always use the newest callbacks (they know the current screen and data).
   const latestOnOpen = useRef(onOpenRequest)
+  const latestOnReceived = useRef(onReceived)
   useEffect(() => {
     latestOnOpen.current = onOpenRequest
+    latestOnReceived.current = onReceived
   })
 
   const active = enabled && pushSupported()
@@ -69,6 +75,7 @@ export function usePushNotifications(enabled: boolean, onOpenRequest: (requestId
       },
       onError: (message) => setError(`Alerts are not set up yet: ${message}`),
       onOpenRequest: (requestId) => latestOnOpen.current(requestId),
+      onReceived: () => latestOnReceived.current?.(),
     })
       .then((stopListening) => {
         if (cancelled) void stopListening()

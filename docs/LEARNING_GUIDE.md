@@ -1700,6 +1700,29 @@ await PushNotifications.createChannel({
 - **Android never changes a channel's sound once it exists on a phone.** To change the tone later, use a new channel id (or reinstall the app).
 - Limits: one play of the file (30 s), at notification volume; silent mode / Do Not Disturb can mute it. A sound that repeats until answered needs native Java (Android's "insistent" flag).
 
+### The red alarm overlay with sound and vibration (onsite, backlog E2 + E3)
+When Notme is **open**, a push doesn't need to ring the system: the app itself takes over the screen.
+
+- **Which request?** `useIncomingAlert(requests, nowMs, isFamily)` returns the newest request that can still be answered and that the family member hasn't *acknowledged* (opened, or pressed Stop alarm). It's plain state; no database change.
+- **The overlay** (`IncomingAlertOverlay`) is a `role="alertdialog"` covering the screen: solid red, white text, no flashing. Focus goes to **Open request**; Escape and Android Back mean **Stop alarm**.
+- **Sound + vibration start and stop with the overlay** using one effect and its clean-up:
+  ```tsx
+  useEffect(() => {
+    const stopSound = startAlarmLoop(30)      // Web Audio beep-beep every 1.2 s
+    const stopVibration = startVibrationLoop(30) // Haptics: 1 s buzz every 1.5 s
+    return () => { stopSound(); stopVibration() } // overlay closed → both stop
+  }, [request.id])
+  ```
+- **One alarm at a time:** `presentationOptions: []` tells Capacitor not to post a system notification while Notme is open; a `pushNotificationReceived` listener just refreshes the list so the overlay appears immediately.
+- **Why sound can start without a tap here:** browsers block autoplay, but Capacitor's Android WebView is configured to allow it. In a normal browser the beep still needs an earlier tap.
+- **Limits:** the in-app alarm plays at *media* volume; silent mode may stop vibration; the red screen always works.
+
+| File | What / why | Common mistake | Practice (no AI) |
+|---|---|---|---|
+| `src/hooks/useIncomingAlert.ts` | Picks the request that should take over the screen | Alarming for answered or expired requests | Make it ignore requests older than 2 minutes |
+| `src/components/IncomingAlertOverlay.tsx` | The red screen; starts/stops sound and vibration | Forgetting the clean-up, so the alarm keeps going after the overlay closes | Add "Call {elder}" as a third button that just closes the overlay |
+| `src/lib/vibration.ts` | Repeating vibration through `@capacitor/haptics` | Calling it in a browser (no vibrator) and crashing | Change the pattern to 3 short buzzes every 2 s |
+
 ### The elder's quick button: a *local* notification (onsite, backlog E4 a)
 Push (above) comes **from a server**. A **local notification** is posted **by the app itself**, on the phone, with no server at all. Notme uses one as a button the elder can reach during a scam call: the notification shade can be pulled down over the call screen.
 
@@ -1829,7 +1852,7 @@ Planned: an Android failure-mode table from real tests (app closed, phone locked
   ```bash
   git log --oneline pre-event-end..HEAD
   ```
-  Every line it prints happened after the event began; each subject ends with `(onsite)`, except `2f3f631`, which says `(pre-event)` and explains why.
+  Every line it prints happened after the event began; each subject ends with `(onsite)`, except `13479f8`, which says `(pre-event)` and explains why.
 - `docs/DISCLOSURE.md` lists what came from Flod, what was built onsite, the libraries and services, and how the AI assistant helped.
 
 **Phase 0 exercise (no AI; answer before Phase 1 starts):** without looking at `docs/PLAN.md`, draw the alert's path from the elder's tap to the family member's phone and back, on paper, with one box per part (elder phone, database, Edge Function, Firebase, family phone). Mark which box holds the Firebase secret key, and write one sentence on why it can't be the elder's phone.

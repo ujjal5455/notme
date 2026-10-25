@@ -359,9 +359,9 @@ Phase 3's last manual check is now ticked in `docs/PLAN.md`. Correction to the r
 - The user copied the whole `D:\PROJECTS\Flod` folder into `D:\PROJECTS\Notme`, including Flod's git history (`.git`), `node_modules`, `dist`, `presentation/`, `Learning/`, a local settings folder and `.env.local` (folder last modified 18:24 IST). `D:\PROJECTS\Flod` itself is unchanged.
 - The AI assistant compared every copied file with Flod by SHA-256 hash: none missing, none different. Extra in Notme: a duplicate `USER_FLOW_FEEDBACK.md` in the root (identical to `docs/USER_FLOW_FEEDBACK.md`). No git remote is configured.
 - Checks on the copy, run by the AI assistant at about 18:38 IST: `npm run typecheck` ✅, `npm run lint` ✅, `npm test` ✅ 14 files, 88/88 tests.
-- Annotated tag **`pre-event-end`** on `f710e6f` (tagged 18:40 IST): the last commit made before the event.
-- `2f3f631` *Add presenting tips and link them from README (pre-event)*: `docs/PRESENTING.md` and a one-line README link, written for Flod before the event (files last saved 24 Oct 01:59) but not committed then; committed unchanged. The user confirmed these are pre-event work. The secret-pattern scan of both files found only a warning sentence, no keys.
-- `6b2c775` *Keep Learning/ notes local and out of git (onsite)*: `Learning/` added to `.gitignore`; the duplicate root `USER_FLOW_FEEDBACK.md` (never committed) deleted after re-checking it matched.
+- Annotated tag **`pre-event-end`** on `c3380fa` (tagged 18:40 IST): the last commit made before the event.
+- `13479f8` *Add presenting tips and link them from README (pre-event)*: `docs/PRESENTING.md` and a one-line README link, written for Flod before the event (files last saved 24 Oct 01:59) but not committed then; committed unchanged. The user confirmed these are pre-event work. The secret-pattern scan of both files found only a warning sentence, no keys.
+- `fbfada8` *Keep Learning/ notes local and out of git (onsite)*: `Learning/` added to `.gitignore`; the duplicate root `USER_FLOW_FEEDBACK.md` (never committed) deleted after re-checking it matched.
 
 **AI assistance disclosure:** comparison, checks, tag and commits run by the AI assistant at the user's request; the copy itself was done by the user.
 
@@ -381,7 +381,7 @@ Phase 3's last manual check is now ticked in `docs/PLAN.md`. Correction to the r
 
 **AI assistance disclosure:** plan, brief, prompts and doc updates written by the AI assistant under the user's direction.
 
-**Approval:** the user approved the plan on 2026-10-24 by asking to start Phase 1; Phase 0 docs committed as `c44e52b` `(onsite)`.
+**Approval:** the user approved the plan on 2026-10-24 by asking to start Phase 1; Phase 0 docs committed as `bedef88` `(onsite)`.
 
 ---
 
@@ -411,7 +411,7 @@ Phase 3's last manual check is now ticked in `docs/PLAN.md`. Correction to the r
 
 **AI assistance disclosure:** migration, code, test and doc changes written by the AI assistant under the user's direction; awaiting the user's Supabase setup and manual test.
 
-Committed as `11504dc` `(onsite)`.
+Committed as `6342cb7` `(onsite)`.
 
 **Run by the user on 2026-10-24 (reported in chat; the AI assistant did not see the project):**
 
@@ -424,7 +424,7 @@ Committed as `11504dc` `(onsite)`.
 
 So the SQL in 0006 has now run on a real Supabase project. The Flod project was left untouched as the backup.
 
-Docs update committed as `68db1be` `(onsite)`.
+Docs update committed as `21ca87d` `(onsite)`.
 
 ---
 
@@ -464,7 +464,7 @@ The AI assistant did **not** sign in on the emulator (account passwords stay wit
 
 **Not done yet:** the Phase 2 manual test (README "Manual test on the phone (Phase 2)") on a phone or the emulator.
 
-Committed as `5edc633` `(onsite)`; `985e4fd` `(onsite)` added `*.bat text eol=crlf` to `.gitattributes` after git warned that `android/gradlew.bat` would otherwise check out with LF endings (checked in a fresh clone: CRLF).
+Committed as `209f5ad` `(onsite)`; `6a57e0c` `(onsite)` added `*.bat text eol=crlf` to `.gitattributes` after git warned that `android/gradlew.bat` would otherwise check out with LF endings (checked in a fresh clone: CRLF).
 
 **Phone connection (2026-10-24):** Windows first saw the user's realme GT 6T only over Bluetooth, not USB (no USB/MTP/ADB device in Windows' device list), so adb didn't list it. After the user fixed the connection, Android Studio listed **realme RMX3853** (the GT 6T). The AI assistant re-ran `npm run android:sync` (✅) and started the web app (`npm run dev`, http://localhost:5173, sign-in screen, no console errors) for the family side.
 
@@ -488,7 +488,7 @@ Committed as `5edc633` `(onsite)`; `985e4fd` `(onsite)` added `*.bat text eol=cr
 
 **Not checked by the AI assistant:** the new Back behaviour itself, because it only applies after signing in, and the AI assistant doesn't sign in. It is README Phase 2 test step 5, for the user on the realme phone.
 
-**Re-checked by the user on the realme GT 6T (reported in chat, 2026-10-24):** "Back works on the phone now: request screen goes home, home minimises the app." Phase 2 complete. Committed as `279124a` `(onsite)`.
+**Re-checked by the user on the realme GT 6T (reported in chat, 2026-10-24):** "Back works on the phone now: request screen goes home, home minimises the app." Phase 2 complete. Committed as `5d3feac` `(onsite)`.
 
 ---
 
@@ -534,7 +534,7 @@ The user asked for (1) a continuous, alarm-like alert sound and (2) a full-scree
 
 Later the same night (2026-10-25) the user also asked for **vibration** when sound isn't possible, and an **elder quick-access button**: during a scam call the elder taps a floating button that opens Notme. All four are recorded as backlog items E1–E4 in `docs/PLAN.md` §9, with options and the open decisions (native Java for the alarm channel; which quick-access option). Nothing built yet; Phase 4 recommended first. **Decision (user, 2026-10-25):** E4 = option (a), the always-present notification ("Money call? Tap to check with family"), not the floating bubble that needs "Display over other apps".
 
-Phase 3 committed as `4aa6999` `(onsite)` (no secret files staged; checked).
+Phase 3 committed as `da1a7fe` `(onsite)` (no secret files staged; checked).
 
 ---
 
@@ -589,7 +589,7 @@ Phase 3 committed as `4aa6999` `(onsite)` (no secret files staged; checked).
 
 **AI assistance disclosure:** code, tests and docs by the AI assistant under the user's direction.
 
-Phase 4 and E4 (a) committed as `85605ef` `(onsite)` (staged files checked: no key files, no private-key text).
+Phase 4 and E4 (a) committed as `c96e460` `(onsite)` (staged files checked: no key files, no private-key text).
 
 ---
 
@@ -648,9 +648,44 @@ Phase 4 and E4 (a) committed as `85605ef` `(onsite)` (staged files checked: no k
 
 **Not tested yet (user):** install the new build, open Notme once as the family member (creates the channel), then send an alert with Notme in the background.
 
-Committed as `9f4272b` `(onsite)` (no key files or private-key text staged; the WAV stored unchanged as binary, blob hash = file hash).
+Committed as `8ab75dd` `(onsite)` (no key files or private-key text staged; the WAV stored unchanged as binary, blob hash = file hash).
 
 **Phone test (user, reported in chat, 2026-10-25):** "the family phone played the 30-second beep-beep alarm for a new alert (Notme in background/closed)." E1 works.
+
+---
+
+## 2026-10-25 · Published to GitHub; history tidied first `[onsite]`
+
+**Request (user):** push what works to GitHub, without the AI tool appearing as a contributor or being named in the repository.
+
+**Done (before anything was published):**
+- A full backup of the old history was saved as a git bundle **outside** the repository.
+- History rewritten with `git filter-branch` (index and message filters only): the AI co-author line removed from all 20 commit messages; the tool's name replaced by neutral wording ("the AI assistant", "an AI coding assistant") in every version of the docs, so the disclosure still says AI assistance was used; mentions of the local brief file replaced by "the project brief"; its two `.gitignore` lines moved to a local-only ignore (`.git/info/exclude`), so the brief and its settings folder still never get committed.
+- Verified: no mention left in any file of any commit or in any message; **20 commits with identical author dates, committer dates, authors and subjects**; only 7 files' wording changed; the alarm WAV byte-identical; `pre-event-end` still on the last pre-event commit.
+- **Every commit got a new ID.** All IDs quoted in this log, PLAN and DISCLOSURE were updated to the new ones (`pre-event-end` = `c3380fa`, previously `f710e6f`).
+- Pushed with `git push -u origin main --tags` to **https://github.com/ujjal5455/notme**: `main` and `pre-event-end` uploaded; remote `main` = local `main` = `cbc7966`. From now on commits carry no AI co-author line (user's preference).
+
+**AI assistance disclosure:** history check, rewrite, verification and push run by the AI assistant at the user's request; the GitHub repository and sign-in by the user.
+
+---
+
+## 2026-10-25 · Backlog E2 + E3: red alarm overlay and vibration on the family phone `[onsite]` *(code done; phone test pending)*
+
+**Finding:** Capacitor's Android WebView sets `setMediaPlaybackRequiresUserGesture(false)` (`Bridge.java`), so inside the app the page may start sound without a tap; in a normal browser the existing "unlock on first tap" still applies. `@capacitor/haptics` 8.0.2 (MIT): `vibrate({ duration })` in ms; its manifest adds only `VIBRATE`.
+
+**Done**
+- `src/hooks/useIncomingAlert.ts`: for the family member, the newest request that can still be answered and hasn't been acknowledged (in memory only, so an unanswered request alarms again after a restart).
+- `src/components/IncomingAlertOverlay.tsx`: full-screen red `alertdialog` (white on `#8a1111`, about 9:1 contrast, no flashing): "⚠ Money alert", "{elder} is being asked to send ₹…", "Before you answer, call {elder} on a number you already trust. Scammers can copy a family member's voice.", the countdown, **Open request** (focused) and **Stop alarm**; Escape and Android **Back** = Stop alarm. Never says the call *is* a scam.
+- `src/lib/alertSound.ts` `startAlarmLoop()`: the same 960/770 Hz beep-beep, repeated every 1.2 s, up to 30 s or until stopped; never throws. `src/lib/vibration.ts` `startVibrationLoop()`: 1 s buzz every 1.5 s, up to 30 s; Android only; never throws.
+- `SignedInApp`: shows the overlay; opening a request (inbox, notification tap, or **Open request**) acknowledges it; a push arriving while Notme is open triggers a refresh (`pushNotificationReceived` → `refetch`), so the overlay appears at once.
+- `capacitor.config.ts`: `presentationOptions: []`, so while Notme is open the phone doesn't also post a system notification (no two alarms at once). In the background or closed, the system notification and the 30 s alarm (E1) work as before.
+- Tests: 3 alarm-loop, 4 vibration, 4 hook, 3 overlay, 4 app-level (waiting request covers the screen; Stop alarm; Open request; a new request arriving while open brings it up; it disappears when answered elsewhere; elders never see it) → **149/149**.
+
+**Checks (the AI assistant, ~12:45 IST):** typecheck ✅, lint ✅, `npm test` 24 files **149/149** ✅, `android:sync` (4 plugins: app, haptics, local-notifications, push-notifications) ✅, `assembleDebug` ✅, `presentationOptions: []` in the synced app config ✅; overlay at 375 px in the browser pane with the in-memory fake (temporary preview files, deleted afterwards): layout, focus on "Open request", **Stop alarm** returns to the inbox with the request still answerable, no horizontal scroll, no console errors ✅.
+
+**Not tested yet (user, on the phone):** the overlay, its sound and vibration on the realme with Notme open; Back = Stop alarm. **Known limits:** the in-app alarm plays at **media** volume (Web Audio), not ringer volume; silent mode may stop vibration; the visual overlay is the part that always works.
+
+**AI assistance disclosure:** code, tests and docs by the AI assistant under the user's direction.
 
 **AI assistance disclosure:** investigation commands, the migration, checks and docs by the AI assistant; screenshots of the dashboard and the phone test by the user.
 

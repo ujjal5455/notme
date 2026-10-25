@@ -6,7 +6,7 @@
 ## Progress
 
 - [x] **Phase 0** — Onsite plan, rules re-check, docs *(2026-10-24; approved)*
-- [x] **Phase 1** — Rename to Notme; amount-only request (web) *(code + automated checks 2026-10-24, commit `11504dc`; new Supabase project, 37/37 RLS checks, 28/28 deploy checks and the manual two-browser test passed, reported by the user 2026-10-24)*
+- [x] **Phase 1** — Rename to Notme; amount-only request (web) *(code + automated checks 2026-10-24, commit `6342cb7`; new Supabase project, 37/37 RLS checks, 28/28 deploy checks and the manual two-browser test passed, reported by the user 2026-10-24)*
 - [x] **Phase 2** — Android app with Capacitor *(2026-10-24: Capacitor 8.5.3 + `android/`; APK builds with Gradle JDK 21; runs on emulator and realme GT 6T; user reports the test works; Back button fixed and re-checked on the phone)*
 - [x] **Phase 3** — Push notifications on the family phone *(2026-10-24: code, 0007, 105 tests; Firebase set up; user reports checks 45/36 PASS and console test messages in all three app states "all worked")*
 - [x] **Phase 4** — Server sends the alert (Edge Function) *(2026-10-25: deployed; after fixing the server role's GRANTs (0009) and the Firebase account's IAM role, the family phone got the notification automatically, reported by the user)*
@@ -145,7 +145,7 @@ Sources, both "Last updated: 22 September 2026":
 
 **Not stated on those pages:** start/end times, timezone, submission requirements (repo, video, deadline). https://hackyardbuild2026.devpost.com/ returned HTTP 403 again on 2026-10-24. **A teammate must open it in a browser** and note the deadline and required fields here.
 
-**How we stay compliant:** the git tag `pre-event-end` (commit `f710e6f`) marks the last pre-event commit; `2f3f631` is a clearly labelled late commit of two pre-event docs; every later commit ends with `(onsite)`; `docs/DISCLOSURE.md` lists what came from Flod.
+**How we stay compliant:** the git tag `pre-event-end` (commit `c3380fa`) marks the last pre-event commit; `13479f8` is a clearly labelled late commit of two pre-event docs; every later commit ends with `(onsite)`; `docs/DISCLOSURE.md` lists what came from Flod.
 
 ## 7. Assumptions (accepted with the plan unless the user says otherwise)
 
@@ -178,8 +178,8 @@ Asked for by the user during the event. Not built yet; each needs the core flow 
 | # | Feature | Plan | Needs |
 |---|---|---|---|
 | E1 | **Alarm-like alert on the family phone** (continuous sound) | New channel `money-alarm` (Android can't change an existing channel's sound): self-made ~30 s alarm tone in `res/raw`, maximum importance, long vibration pattern. Phase 4's server message uses this channel | **Built 2026-10-25 without native code:** Capacitor's `createChannel({ sound })` plays `res/raw/notme_alarm.wav` (30 s, made by `scripts/make-alarm-tone.mjs`). Default vibration pattern only; a ring that repeats until answered would still need native Java. **Phone test ✅** (user: 30-second alarm with Notme in the background and closed) |
-| E2 | **Overlay warning on the family phone** | Red full-screen overlay when a new request is waiting (Notme open, or after tapping the alert): elder's name, amount, "call them on a number you already trust", **Open request** / **Stop alarm**; looping alarm (Web Audio) until a button, an answer or expiry | No native code |
-| E3 | **Vibration when sound isn't possible** | `@capacitor/haptics`: repeating 1 s buzz / ½ s pause for up to 30 s while the overlay shows; when closed, the channel's vibration pattern (E1) | Plugin (official, MIT); E1's native part for the closed case |
+| E2 | **Overlay warning on the family phone** | Red full-screen overlay when a new request is waiting (Notme open, or after tapping the alert): elder's name, amount, "call them on a number you already trust", **Open request** / **Stop alarm**; looping alarm (Web Audio) until a button, an answer or expiry | **Built 2026-10-25** (`IncomingAlertOverlay`, `useIncomingAlert`, `startAlarmLoop`; `presentationOptions: []` so only one alarm plays while Notme is open); 149 tests; phone test pending |
+| E3 | **Vibration when sound isn't possible** | `@capacitor/haptics`: repeating 1 s buzz / ½ s pause for up to 30 s while the overlay shows; when closed, the channel's vibration pattern (E1) | **Built 2026-10-25** (`startVibrationLoop`: 1 s buzz every 1.5 s, up to 30 s); closed app keeps Android's default channel vibration; phone test pending |
 | E4 | **Elder quick-access button during a scam call** | Options, least risky first: (a) an always-present notification "Money call? Tap to check with family" (official Local Notifications plugin; reachable over the call screen from the notification shade); (b) a Quick Settings tile (small native Java `TileService`); (c) a home-screen shortcut/widget; (d) a true floating bubble over other apps | (d) needs the **"Display over other apps"** permission, a native foreground service, and is the same permission scam apps ask elders for (see `docs/USER_FLOW_FEEDBACK.md` §3). Recommended: (a), then (b) if time allows. **User chose (a)** (2026-10-25): an always-present notification on the elder's phone; tapping it opens Notme on **Send a money alert**. **Built 2026-10-25** (`@capacitor/local-notifications`, `src/lib/quickAccess.ts`, `useQuickAccess`, `QuickAccessBanner`; 10 tests); phone test pending |
 
 Honest limits for all of them: Do Not Disturb or a fully silent phone may stop sound and vibration; realme/Xiaomi battery savers can delay or kill background work; only the visual warning is certain.
