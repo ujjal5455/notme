@@ -12,6 +12,16 @@ import { PushNotifications } from '@capacitor/push-notifications'
 /** Same id as default_notification_channel_id in android/app/src/main/res/values/strings.xml. */
 export const ALERT_CHANNEL_ID = 'money-alerts'
 
+/**
+ * The channel send-alert asks for (supabase/functions/send-alert/fcm.ts),
+ * onsite backlog E1: rings with Notme's own 30-second alarm tone
+ * (android/app/src/main/res/raw/notme_alarm.wav, made by
+ * scripts/make-alarm-tone.mjs). Android never changes a channel's sound once
+ * it exists on a phone, so a different sound needs a new id here.
+ */
+export const ALARM_CHANNEL_ID = 'money-alarm'
+const ALARM_SOUND_FILE = 'notme_alarm.wav'
+
 /** 'unsupported' = a normal browser (no push there); the others are Android's answer. */
 export type PushPermission = 'unsupported' | 'prompt' | 'granted' | 'denied'
 
@@ -40,17 +50,28 @@ export async function requestPushPermission(): Promise<PushPermission> {
 }
 
 /**
- * The loud channel money alerts use (Android 8+). Importance 5 = sound and a
+ * The loud channels money alerts use (Android 8+). Importance 5 = sound and a
  * banner over other apps. Safe to call at every start: if the person changed
- * the channel's settings on their phone, Android keeps their choice.
+ * a channel's settings on their phone, Android keeps their choice.
  */
 export async function createAlertChannel(): Promise<void> {
+  // The alarm: what send-alert uses, with the 30-second alarm tone.
+  await PushNotifications.createChannel({
+    id: ALARM_CHANNEL_ID,
+    name: 'Money alarm',
+    description: 'Rings like an alarm when the elder you are linked with is asked to send money',
+    importance: 5,
+    visibility: 1, // shown on the lock screen: an alert is urgent
+    vibration: true,
+    sound: ALARM_SOUND_FILE,
+  })
+  // The fallback (manifest default) for messages that name no channel, e.g. Firebase console tests.
   await PushNotifications.createChannel({
     id: ALERT_CHANNEL_ID,
     name: 'Money alerts',
     description: 'When the elder you are linked with is asked to send money',
     importance: 5,
-    visibility: 1, // shown on the lock screen: an alert is urgent
+    visibility: 1,
     vibration: true,
   })
 }

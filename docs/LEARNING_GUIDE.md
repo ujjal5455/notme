@@ -1686,6 +1686,20 @@ Android shows its permission dialog only a couple of times; if the person says n
 5. Later Ravi taps an alert carrying `request_id` → `pushNotificationActionPerformed` → `openRequest(id)` → the request screen.
 6. Ravi signs out → `forgetDevice()` → `unregister_push_token` deletes his row → then the normal sign-out.
 
+### A custom alarm sound for a channel (onsite, backlog E1)
+On Android 8+, **the channel decides the sound**, not the message. So "make it ring like an alarm" means: create a channel whose sound is our own alarm file.
+
+```ts
+await PushNotifications.createChannel({
+  id: 'money-alarm', name: 'Money alarm', importance: 5, visibility: 1, vibration: true,
+  sound: 'notme_alarm.wav', // android/app/src/main/res/raw/notme_alarm.wav
+})
+```
+- The file is **made by code** (`scripts/make-alarm-tone.mjs`): 30 seconds of alternating 960 Hz / 770 Hz beeps, written as a WAV (a 44-byte header + raw samples). Making it ourselves means no copyright question.
+- The server's message names `channel_id: 'money-alarm'`; the phone plays that channel's sound.
+- **Android never changes a channel's sound once it exists on a phone.** To change the tone later, use a new channel id (or reinstall the app).
+- Limits: one play of the file (30 s), at notification volume; silent mode / Do Not Disturb can mute it. A sound that repeats until answered needs native Java (Android's "insistent" flag).
+
 ### The elder's quick button: a *local* notification (onsite, backlog E4 a)
 Push (above) comes **from a server**. A **local notification** is posted **by the app itself**, on the phone, with no server at all. Notme uses one as a button the elder can reach during a scam call: the notification shade can be pulled down over the call screen.
 
@@ -1759,6 +1773,27 @@ Every `admin` query is filtered by values that came from the RLS-checked request
 | no_device | "Ravi hasn't turned on Notme alerts on their phone, so it won't ring. **Call them now…**" + Try again | the next step is a phone call |
 | failed | "The alert may not have reached Ravi's phone. **Call them now…**" + Try again | network, function not deployed, Firebase error |
 
+### A real bug from this phase: "permission denied for table money_requests"
+**Symptom:** the elder saw "The alert may not have reached KANTA's phone"; the phone stayed silent; a Firebase console test to the same token *did* arrive.
+
+**How it was found, step by step** (a good debugging order to copy):
+1. *Does the phone receive at all?* Firebase console test → yes. So the phone, the token and FCM delivery are fine.
+2. *Is the function deployed, with its secret?* `npx supabase functions list` / `secrets list` → yes.
+3. *Does a browser request reach our code?* Preflight → 200; an unsigned POST → our own message "You need to sign in first." → yes.
+4. *Does the database column exist?* Asking for `alert_sent_at` with the public key said "permission denied" (exists), while a made-up column said "does not exist" → yes.
+5. *What does the function's own log say?* Dashboard → Edge Functions → send-alert → **Logs**: `send-alert failed: permission denied for table money_requests`, Invocations: **500**.
+
+**Cause:** the claim step uses the **secret (service_role) key**. `service_role` has *BYPASSRLS*: it skips **Row Level Security policies**. But table **privileges (GRANTs)** are a separate, earlier gate that RLS can't open. Older Supabase projects granted all tables to `service_role` automatically; this new project didn't, and our migrations only granted `SELECT` to `authenticated`.
+
+```
+request ──► GRANT check (role may touch this table/column?) ──► RLS check (which rows?) ──► data
+             service_role needs this ✔                          service_role skips this
+```
+
+**Fix:** `0009_service_role_grants.sql` grants exactly what `send-alert` does, and no more: read `money_requests`, update **only** `alert_sent_at`, read `profiles`, read/delete `push_tokens`. `deploy_checks.sql` now has four "server (service_role) can: …" rows, so this can't silently break again.
+
+**Lesson:** "bypasses RLS" ≠ "may do anything". And when a feature fails, read the *server's* log before guessing.
+
 ### Testing it
 - `supabase/functions/send-alert/fcm.test.ts` (Vitest, plain Node): the message contains only name, amount and request id; channel/priority/TTL; only `UNREGISTERED` deletes a token; and a JWT signed with a throwaway key **verifies** with the matching public key.
 - `src/test/fakeSupabase.ts` gained `functions.invoke('send-alert')` with the same rules, so `SignedInApp.test.tsx` checks the four elder messages and Try again.
@@ -1831,5 +1866,7 @@ Planned: an Android failure-mode table from real tests (app closed, phone locked
 - **JWT (JSON Web Token):** three base64url parts, header.claims.signature; whoever has the public key can check who signed it.
 - **Access token:** a short-lived pass (here 1 hour) that Google gives in exchange for a signed JWT.
 - **CORS:** browser rules that decide whether a page on one origin may call a server on another; the function answers the browser's "may I?" (OPTIONS) request.
+- **GRANT / table privilege:** permission for a database role to SELECT/INSERT/UPDATE/DELETE a table (or a column). Checked before RLS.
+- **BYPASSRLS:** a role attribute (service_role has it) that skips RLS policies, but not GRANTs.
 - **Local notification:** a notification the app posts itself, without a server.
 - **Ongoing notification:** one marked so it can't (easily) be swiped away; Android 14+ may still allow it.

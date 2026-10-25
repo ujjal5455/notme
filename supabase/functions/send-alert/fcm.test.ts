@@ -6,6 +6,7 @@ import {
   ALERT_CHANNEL_ID,
   base64url,
   buildAlertMessage,
+  describeFcmError,
   fcmErrorCode,
   FCM_SCOPE,
   GOOGLE_TOKEN_URL,
@@ -67,6 +68,24 @@ describe('FCM errors', () => {
     expect(fcmErrorCode(error('UNREGISTERED'))).toBe('UNREGISTERED')
     expect(fcmErrorCode({ error: { details: [] } })).toBeNull()
     expect(fcmErrorCode(null)).toBeNull()
+  })
+
+  it('describes an error in one log-safe line', () => {
+    expect(
+      describeFcmError({
+        error: { code: 403, status: 'PERMISSION_DENIED', message: 'Firebase Cloud Messaging API has not been used\n in project 123' },
+      }),
+    ).toBe('PERMISSION_DENIED: Firebase Cloud Messaging API has not been used in project 123')
+    expect(
+      describeFcmError({
+        error: {
+          status: 'PERMISSION_DENIED',
+          message: 'SenderId mismatch',
+          details: [{ '@type': 'type.googleapis.com/google.firebase.fcm.v1.FcmError', errorCode: 'SENDER_ID_MISMATCH' }],
+        },
+      }),
+    ).toBe('PERMISSION_DENIED (SENDER_ID_MISMATCH): SenderId mismatch')
+    expect(describeFcmError(null)).toBe('no details')
   })
 
   it('deletes a token only when FCM says it is unregistered', () => {

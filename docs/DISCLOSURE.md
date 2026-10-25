@@ -61,6 +61,8 @@ Versions as installed (`node_modules/*/package.json`). All are open source under
 
 **Not used:** UI component libraries, icon packs, web fonts (the app uses the system font), images, analytics, payment APIs, AI APIs.
 
+**Sound:** the alarm tone `android/app/src/main/res/raw/notme_alarm.wav` was **generated onsite by our own script** (`scripts/make-alarm-tone.mjs`, synthesized beeps); no third-party audio is used.
+
 ## 3. External services
 
 | Service | Used for | Notes |

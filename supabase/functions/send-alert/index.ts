@@ -18,6 +18,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import {
   buildAlertMessage,
+  describeFcmError,
   fcmErrorCode,
   GOOGLE_TOKEN_URL,
   isUuid,
@@ -157,8 +158,10 @@ Deno.serve(async (req) => {
           sent += 1
           continue
         }
-        const code = fcmErrorCode(await response.json().catch(() => null))
-        console.error(`FCM send failed: HTTP ${response.status} ${code ?? ''}`) // never log the token
+        const errorBody = await response.json().catch(() => null)
+        const code = fcmErrorCode(errorBody)
+        // Google's explanation (never the token or the key), e.g. "PERMISSION_DENIED: …".
+        console.error(`FCM send failed: HTTP ${response.status} ${describeFcmError(errorBody)}`)
         if (shouldDeleteToken(code)) await admin.from('push_tokens').delete().eq('token', token)
       }
 

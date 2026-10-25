@@ -114,6 +114,21 @@ checks(check_name, ok, detail) as (
                      and column_name in ('recipient', 'note')), 'none')
 
   union all
+  -- 11. 0009: the send-alert function (service_role) has exactly the table rights it uses.
+  --     service_role skips RLS but NOT these privileges; without them it fails with
+  --     "permission denied for table …".
+  select 'server (service_role) can: ' || r.what,
+         r.ok,
+         case when r.ok then 'granted' else 'missing: run 0009_service_role_grants.sql' end
+  from (values
+    ('read money_requests',        has_table_privilege('service_role', 'public.money_requests', 'SELECT')),
+    ('update alert_sent_at',       has_column_privilege('service_role', 'public.money_requests', 'alert_sent_at', 'UPDATE')),
+    ('read profiles',              has_table_privilege('service_role', 'public.profiles', 'SELECT')),
+    ('read and delete push_tokens', has_table_privilege('service_role', 'public.push_tokens', 'SELECT')
+                                    and has_table_privilege('service_role', 'public.push_tokens', 'DELETE'))
+  ) as r(what, ok)
+
+  union all
   -- 10. 0008: the column the send-alert function uses to send at most once.
   select 'alert: money_requests has alert_sent_at (0008)',
          exists (select 1 from information_schema.columns

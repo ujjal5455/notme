@@ -589,4 +589,65 @@ Phase 3 committed as `4aa6999` `(onsite)` (no secret files staged; checked).
 
 **AI assistance disclosure:** code, tests and docs by the AI assistant under the user's direction.
 
+Phase 4 and E4 (a) committed as `85605ef` `(onsite)` (staged files checked: no key files, no private-key text).
+
+---
+
+## 2026-10-25 · Phase 4 on the live project: alerts not arriving → missing GRANTs (0009) `[onsite]`
+
+**Correction first:** a chat message saying "deploy and tests done… family phone rang" came from a pre-filled reply button, not from a real test. The AI assistant had written it into this log, PLAN and README; those edits were **never committed** and were undone (`git checkout` of the three files) as soon as the user reported that nothing rang.
+
+**Symptom (user, ~10:50–11:06 IST):** elder (KANTA's linked elder, browser) sends an alert; the elder's screen shows **"The alert may not have reached KANTA's phone…"**; the family phone (realme GT 6T, signed in as the family member) gets the request in the inbox but **no notification or sound**. A Firebase console test message to the token from `push_tokens` **does** arrive.
+
+**Investigation (AI assistant):**
+| Check | Result |
+|---|---|
+| `npx supabase functions list --project-ref …` | `send-alert` ACTIVE, version 1, `verify_jwt: true` |
+| `npx supabase secrets list` (names + digests only) | `FCM_SERVICE_ACCOUNT` present |
+| Phone over adb: notification permission, channels, battery | granted; `money-alerts` importance 5 (+ `fcm_fallback_notification_channel`); background allowed and battery-whitelisted; Android 16 |
+| Phone log recorded during the user's test | no FCM message for `org.notme.demo` arrived |
+| `OPTIONS` preflight to the function | 200 with CORS headers |
+| `POST` with only the public key | 401 with the function's own "You need to sign in first." (gateway passes requests through) |
+| REST `select=alert_sent_at` vs a made-up column, public key | "permission denied" vs "does not exist" → **0008 was applied** |
+| Dashboard Logs / Invocations (screenshots from the user) | POST **500** ×3 at 10:50, log **`send-alert failed: permission denied for table money_requests`** |
+
+**Cause:** the function's claim step (`update money_requests set alert_sent_at …`) runs with the secret/service_role key. service_role bypasses RLS but still needs table privileges; this new project does not grant tables to service_role by default, and no migration granted them. The caller-side read worked because `authenticated` has `SELECT` (0002).
+
+**Fix:** `supabase/migrations/0009_service_role_grants.sql`: `select` on `money_requests`, `update (alert_sent_at)` only, `select` on `profiles`, `select, delete` on `push_tokens`, all to `service_role`. `deploy_checks.sql` gains 4 rows ("server (service_role) can: …") → **41**. No change to the function itself, so no redeploy is needed. README (setup step, file table, counts) and LEARNING_GUIDE §16 ("A real bug from this phase", 2 glossary terms) updated.
+
+**Not verified yet:** 0009 run on the project; 41/41 PASS; an alert actually ringing the family phone. (User's next steps.)
+
+**After 0009 (user, ~11:28 IST):** 0009 run and `deploy_checks.sql` checked ("checked"); the permission error is gone. Invocations now **502**; Logs: **`FCM send failed: HTTP 403`** (three attempts, 11:27:57–11:28:01), with no FCM error code after it. So the function now reaches Google, and Google refuses the send. The missing FcmError code points to a Google Cloud refusal (e.g. the Firebase Cloud Messaging API (V1) disabled for the project, or the key's account lacking permission) rather than a bad device token. The Firebase console's own test message still arrives because it doesn't use our service account. The user also reported the elder's screen showing "Alert sent to KANTA's phone" for one attempt; not yet explained (possibly a second family device that accepted it). A second phone (Xiaomi/POCO 2311DRK48I) with Notme installed was connected over adb at ~11:30 and had no Notme notification.
+
+**Change (AI assistant):** the function now logs Google's own explanation, `FCM send failed: HTTP 403 PERMISSION_DENIED: …` (new `describeFcmError` in `fcm.ts`, log-safe: Google's messages contain neither the token nor the key), with 1 new test → **130/130**. Needs a redeploy of `send-alert` to take effect.
+
+**More checks (user, ~11:35–11:53):** Firebase → Cloud Messaging: *Firebase Cloud Messaging API (V1)* **Enabled** (Sender ID shown; legacy API disabled). Phone settings: Notme notifications, the *Money alerts* channel (pop-up, sound, vibration, lock screen) all on. Firebase → Service accounts: the only account is `firebase-adminsdk-fbsvc@notme-demo.iam.gserviceaccount.com`; the user generated a **new key** and replaced the `FCM_SERVICE_ACCOUNT` secret → still 502/403.
+
+**Redeployed by the AI assistant with the user's OK** (~11:55 IST): `npx supabase functions deploy send-alert --use-api --project-ref …` → "Deployed Functions", version 3, ACTIVE.
+
+**Google's reason (Logs, 12:00:52 and 12:01:03, screenshot from the user):** `FCM send failed: HTTP 403 PERMISSION_DENIED: Permission 'cloudmessaging.messages.create' denied on resource '//cloudresourcemanager.googleapis.com/projects/notme-demo' (or it may not exist).` So the key and the code are right, but the project's Firebase Admin SDK service account has **no permission to send FCM messages**. Fix (user, in Google Cloud IAM): give that account the role **Firebase Cloud Messaging API Admin** (`roles/firebasecloudmessaging.admin`, which contains `cloudmessaging.messages.create`; checked on Google's IAM role reference and the Firebase Admin SDK send guide, 2026-10-25). README setup step 2.3 added.
+
+**Result (user, ~12:10 IST):** the Google Cloud IAM page showed only the user (Owner) and no role for `firebase-adminsdk-fbsvc@notme-demo…`; the user granted it **Firebase Cloud Messaging API Admin**. Then: **"notification worked and default sound played (the device normal cling sound)"**. Phase 4's core flow (elder taps Send → family phone notified automatically) now works on the live project. Three causes in total, all configuration on a brand-new project: missing service_role GRANTs (0009), and the Firebase service account lacking the FCM send permission (IAM role); plus a clearer log to find the second.
+
+---
+
+## 2026-10-25 · Backlog E1: alarm-like ringing (no native code) `[onsite]`
+
+**Request (user):** "I want continuous ringing sound like an alarm" instead of the normal notification sound.
+
+**Finding:** native Java is **not** needed for a long ring. Reading `NotificationChannelManager.java` of `@capacitor/push-notifications` 8.1.3: `createChannel({ sound })` loads `res/raw/<name>` as the channel's sound (usage NOTIFICATION, content type SONIFICATION); vibration can only be switched on (Android's default pattern), not given a custom pattern.
+
+**Done**
+- `scripts/make-alarm-tone.mjs`: synthesizes Notme's own **30-second two-tone "beep-beep" alarm** (16 kHz, 16-bit mono WAV; no third-party audio) → `android/app/src/main/res/raw/notme_alarm.wav` (938 KB).
+- `src/lib/push.ts`: `createAlertChannel()` now also creates **`money-alarm`** ("Money alarm", importance 5, lock screen, vibration, sound `notme_alarm.wav`), the channel `send-alert` already asks for. `money-alerts` stays as the default for messages that name no channel. No server change, no redeploy.
+- `scripts/alarmTone.test.ts`: the file is a 30 s 16-bit mono PCM WAV and not silent.
+
+**Checks (AI assistant, ~12:15 IST):** typecheck ✅, lint ✅, `npm test` **131/131** (21 files) ✅, `android:sync` ✅, `assembleDebug` ✅, `res/raw/notme_alarm.wav` present in the APK ✅.
+
+**Limits:** it rings for up to 30 s (one play of the tone) at **notification** volume; tapping or clearing the notification stops it; silent mode / Do Not Disturb can mute it. A ring that repeats *until answered* (Android's "insistent" flag) or alarm volume would need native Java. Android never changes an existing channel's sound, so changing the tone later needs a new channel id.
+
+**Not tested yet (user):** install the new build, open Notme once as the family member (creates the channel), then send an alert with Notme in the background.
+
+**AI assistance disclosure:** investigation commands, the migration, checks and docs by the AI assistant; screenshots of the dashboard and the phone test by the user.
+
 **AI assistance disclosure:** setup checks, config, scripts and docs by the AI assistant under the user's direction.

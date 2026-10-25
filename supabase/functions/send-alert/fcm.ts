@@ -123,6 +123,19 @@ export function fcmErrorCode(body: unknown): string | null {
   return fcm?.errorCode ?? null
 }
 
+/**
+ * A one-line, log-safe summary of an FCM/Google error, e.g.
+ * "PERMISSION_DENIED: Firebase Cloud Messaging API has not been used…".
+ * Google's messages never contain the device token or the key.
+ */
+export function describeFcmError(body: unknown): string {
+  const error = (body as { error?: { status?: string; message?: string } })?.error
+  const code = fcmErrorCode(body)
+  const parts = [error?.status, code && code !== error?.status ? `(${code})` : null].filter(Boolean)
+  const message = (error?.message ?? '').replace(/\s+/g, ' ').slice(0, 300)
+  return `${parts.join(' ')}${message ? `: ${message}` : ''}` || 'no details'
+}
+
 /** Firebase's error guide: only UNREGISTERED means "delete this token". */
 export function shouldDeleteToken(code: string | null): boolean {
   return code === 'UNREGISTERED'
