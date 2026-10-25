@@ -12,8 +12,9 @@ Built at **Hackyard Build 2026** on top of the team's **pre-event** web prototyp
 - **Onsite Phase 1:** renamed to Notme; requests are **amount-only** (no payee/UPI ID, no note) in the form, the screens and the database (`0006_amount_only.sql`).
 - **Onsite Phase 2:** Capacitor 8 Android project added (`android/`, `capacitor.config.ts`); see **Android app** below. Builds with Gradle on Java 21; tested on the emulator (opens) and on a realme GT 6T (user: the elder ↔ family flow works).
 - **Onsite Phase 3:** push notifications on the family phone (permission, alert channel, device token saved through `0007_push_tokens.sql`, tap to open a request); see **Push notifications** below.
-- **Onsite Phase 4:** the `send-alert` Edge Function rings the family member's phone automatically when the elder taps Send (`0008_alert_sent.sql`; see **Automatic alerts** below). Needs the one-time deploy steps there.
+- **Onsite Phase 4:** the `send-alert` Edge Function rings the family member's phone automatically when the elder taps Send (`0008_alert_sent.sql`, `0009_service_role_grants.sql`; see **Automatic alerts** below). Deployed and tested on two devices.
 - **Onsite extra (E4 a):** the elder's quick button in the notification shade; see **Elder's quick button** below.
+- **Onsite extra (E1):** the family phone rings with Notme's own 30-second alarm (tested on the phone with Notme in the background and closed); see **Alarm-like ringing** below.
 
 See [`docs/PLAN.md`](docs/PLAN.md) for progress and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md) for what was done and tested.
 

@@ -648,6 +648,10 @@ Phase 4 and E4 (a) committed as `85605ef` `(onsite)` (staged files checked: no k
 
 **Not tested yet (user):** install the new build, open Notme once as the family member (creates the channel), then send an alert with Notme in the background.
 
+Committed as `9f4272b` `(onsite)` (no key files or private-key text staged; the WAV stored unchanged as binary, blob hash = file hash).
+
+**Phone test (user, reported in chat, 2026-10-25):** "the family phone played the 30-second beep-beep alarm for a new alert (Notme in background/closed)." E1 works.
+
 **AI assistance disclosure:** investigation commands, the migration, checks and docs by the AI assistant; screenshots of the dashboard and the phone test by the user.
 
 **AI assistance disclosure:** setup checks, config, scripts and docs by the AI assistant under the user's direction.
