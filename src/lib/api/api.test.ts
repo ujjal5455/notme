@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { redeemPairingCode, createPairingCode } from './pairing'
 import { createMyProfile } from './profile'
 import { registerPushToken, unregisterPushToken } from './pushTokens'
-import { createMoneyRequest, listMyRequests, respondToRequest } from './requests'
+import { createMoneyRequest, listMyRequests, respondToRequest, sendAlert } from './requests'
 
 const row = {
   id: 'req-1',
@@ -21,16 +21,19 @@ const row = {
 
 const rpc = vi.fn()
 const select = vi.fn()
+const invoke = vi.fn()
 vi.mock('../supabaseClient', () => ({
   supabase: {
     rpc: (...args: unknown[]) => rpc(...args),
     from: (table: string) => ({ select: (columns: string) => select(table, columns) }),
+    functions: { invoke: (...args: unknown[]) => invoke(...args) },
   },
 }))
 
 beforeEach(() => {
   rpc.mockReset()
   select.mockReset()
+  invoke.mockReset()
 })
 
 describe('what the browser sends', () => {
@@ -63,6 +66,19 @@ describe('what the browser sends', () => {
     rpc.mockResolvedValue({ data: {}, error: null })
     await redeemPairingCode('p38s-p4xs')
     expect(rpc).toHaveBeenLastCalledWith('redeem_pairing_code', { p_code: 'p38s-p4xs' })
+  })
+
+  it('send alert (onsite): only the request id; never who to alert', async () => {
+    invoke.mockResolvedValue({ data: { sent: 1 }, error: null })
+    await expect(sendAlert('req-1')).resolves.toBe('sent')
+    expect(invoke).toHaveBeenCalledWith('send-alert', { body: { request_id: 'req-1' } })
+
+    invoke.mockResolvedValue({ data: { sent: 0, reason: 'already_sent' }, error: null })
+    await expect(sendAlert('req-1')).resolves.toBe('sent')
+    invoke.mockResolvedValue({ data: { sent: 0, reason: 'no_device' }, error: null })
+    await expect(sendAlert('req-1')).resolves.toBe('no_device')
+    invoke.mockResolvedValue({ data: null, error: { message: 'Edge Function returned a non-2xx status code' } })
+    await expect(sendAlert('req-1')).rejects.toThrow('The alert could not be sent.')
   })
 
   it('push token (onsite): only the token, never a user id', async () => {

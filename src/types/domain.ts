@@ -45,7 +45,12 @@ export interface MoneyRequest {
   createdAt: string
   expiresAt: string
   respondedAt: string | null
+  /** When the server rang the family member's phone (onsite, Phase 4); null if not (yet). */
+  alertSentAt: string | null
 }
+
+/** What the elder sees about the phone alert for one request (onsite, Phase 4). */
+export type AlertState = 'sending' | 'sent' | 'no_device' | 'failed'
 
 /** What the elder's form produces after validation — the only part the elder controls. */
 export interface NewRequestInput {

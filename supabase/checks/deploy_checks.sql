@@ -114,6 +114,14 @@ checks(check_name, ok, detail) as (
                      and column_name in ('recipient', 'note')), 'none')
 
   union all
+  -- 10. 0008: the column the send-alert function uses to send at most once.
+  select 'alert: money_requests has alert_sent_at (0008)',
+         exists (select 1 from information_schema.columns
+                 where table_schema = 'public' and table_name = 'money_requests'
+                   and column_name = 'alert_sent_at'),
+         'run 0008_alert_sent.sql if missing'
+
+  union all
   -- 9. ... and the old create_money_request that accepted them is gone.
   select 'amount-only: old create_money_request(amount, recipient, note, timeout) removed',
          to_regprocedure('public.create_money_request(integer, text, text, integer)') is null,

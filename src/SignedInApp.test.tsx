@@ -68,7 +68,9 @@ describe('SignedInApp (Phase 5: requests saved in Supabase)', () => {
     expect(await screen.findByRole('heading', { level: 1, name: '₹2,500' })).toBeInTheDocument()
     expect(screen.getByText(/the amount you are being asked to pay/i)).toBeInTheDocument()
     expect(screen.queryByText(/demo-upi|recipient|no note/i)).not.toBeInTheDocument() // amount only
-    expect(screen.getByRole('status')).toHaveTextContent(/waiting for ravi \(demo\) to confirm/i)
+    // Two status messages since Phase 4 (onsite): the waiting banner and the phone-alert line.
+    const banner = screen.getAllByRole('status').find((el) => /waiting for ravi \(demo\) to confirm/i.test(el.textContent ?? ''))
+    expect(banner).toBeDefined()
     expect(screen.queryByRole('button', { name: 'Confirm request' })).not.toBeInTheDocument()
   })
 
@@ -216,6 +218,43 @@ describe('SignedInApp (Phase 6: answers and live updates)', () => {
     fake.state.realtime = 'fail'
     await renderAsElder()
     expect(await screen.findByText(/checking for updates every few seconds/i)).toBeInTheDocument()
+  })
+})
+
+describe('SignedInApp (onsite Phase 4: the phone alert)', () => {
+  it('after Send, the server is asked to ring the family phone, and the elder is told', async () => {
+    await renderAsElder()
+    fillAndSend()
+    expect(await screen.findByText("Alert sent to Ravi (demo)'s phone.")).toBeInTheDocument()
+    // Still "do not pay": sent is not the same as seen.
+    expect(screen.getByText(/do not pay yet/i)).toBeInTheDocument()
+  })
+
+  it('if the alert fails, says to call them now and offers Try again', async () => {
+    fake.state.alert = 'fail'
+    await renderAsElder()
+    fillAndSend()
+    expect(await screen.findByText(/the alert may not have reached ravi \(demo\)'s phone/i)).toBeInTheDocument()
+    expect(screen.getByText(/call them now on a number you already trust/i)).toBeInTheDocument()
+
+    fake.state.alert = 'sent'
+    click('Try again')
+    expect(await screen.findByText("Alert sent to Ravi (demo)'s phone.")).toBeInTheDocument()
+  })
+
+  it('says so when the family member has not turned alerts on', async () => {
+    fake.state.alert = 'no_device'
+    await renderAsElder()
+    fillAndSend()
+    expect(await screen.findByText(/hasn't turned on notme alerts on their phone/i)).toBeInTheDocument()
+  })
+
+  it('the family member never sees the alert status', async () => {
+    const id = await savedRequest()
+    await fake.supabase.functions.invoke('send-alert', { body: { request_id: id } })
+    await renderAsFamily()
+    click(/₹2,500/)
+    expect(screen.queryByText(/alert sent to/i)).not.toBeInTheDocument()
   })
 })
 

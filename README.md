@@ -12,7 +12,8 @@ Built at **Hackyard Build 2026** on top of the team's **pre-event** web prototyp
 - **Onsite Phase 1:** renamed to Notme; requests are **amount-only** (no payee/UPI ID, no note) in the form, the screens and the database (`0006_amount_only.sql`).
 - **Onsite Phase 2:** Capacitor 8 Android project added (`android/`, `capacitor.config.ts`); see **Android app** below. Builds with Gradle on Java 21; tested on the emulator (opens) and on a realme GT 6T (user: the elder ↔ family flow works).
 - **Onsite Phase 3:** push notifications on the family phone (permission, alert channel, device token saved through `0007_push_tokens.sql`, tap to open a request); see **Push notifications** below.
-- **Not built yet:** the server-side function that sends the alert automatically (Phase 4). Until then a request reaches the family member's phone only while Notme is open, or as a Firebase console test message.
+- **Onsite Phase 4:** the `send-alert` Edge Function rings the family member's phone automatically when the elder taps Send (`0008_alert_sent.sql`; see **Automatic alerts** below). Needs the one-time deploy steps there.
+- **Onsite extra (E4 a):** the elder's quick button in the notification shade; see **Elder's quick button** below.
 
 See [`docs/PLAN.md`](docs/PLAN.md) for progress and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md) for what was done and tested.
 
@@ -168,6 +169,53 @@ The **family** account must be on the Android device this time (the elder can us
 6. Sign in as an **elder** on the phone → no banner, no permission question.
 7. Answer **Don't allow** once (or turn notifications off in Settings) → Notme says *Alerts are off* and explains how to turn them on; everything else still works.
 
+## Automatic alerts: the send-alert Edge Function (onsite Phase 4)
+
+When the elder taps **Send alert to family**, the app saves the request and then calls the **`send-alert`** Edge Function (`supabase/functions/send-alert/`). It runs on Supabase's servers and checks that the caller is signed in and is the **elder who made this request**, that it is still waiting, and that it hasn't already been alerted. It then finds the linked family member's phone token **in the database** and asks Firebase Cloud Messaging to ring it (high priority, on the `money-alarm` channel; until the app creates that channel, Android uses `money-alerts`). The elder's screen says **"Alert sent to Ravi's phone."**, or, if it could not be sent, **"…may not have reached… Call them now on a number you already trust"** with **Try again**.
+
+### One-time setup (you)
+
+1. **Supabase SQL Editor:** run `supabase/migrations/0008_alert_sent.sql`, then `deploy_checks.sql` → **37 × PASS** (`rls_checks.sql` is unchanged: 45).
+2. **Firebase service-account key** (a real secret):
+   1. Firebase console → **⚙ Project settings → Service accounts** → **Generate new private key** → **Generate key**. A JSON file downloads (named like `notme-demo-firebase-adminsdk-….json`).
+   2. Keep it **outside** this project folder (e.g. in Downloads). Never commit it, never paste it in a chat or a document. (`.gitignore` also blocks `*firebase-adminsdk*.json`, just in case.)
+3. **Supabase → Edge Functions → Secrets** (https://supabase.com/dashboard/project/_/functions/secrets) → add a secret: **Name** `FCM_SERVICE_ACCOUNT`, **Value** = the *whole* contents of that JSON file (open it in Notepad → Ctrl+A → Ctrl+C → paste) → **Save**. Then delete the downloaded file, or store it somewhere private offline.
+4. **Deploy the function** from this folder (Docker not needed):
+   ```bash
+   npx supabase login
+   ```
+   ```bash
+   npx supabase functions deploy send-alert --use-api --project-ref YOUR_PROJECT_REF
+   ```
+   `YOUR_PROJECT_REF` is the part before `.supabase.co` in your Notme project URL (also in **Project Settings → General**). `supabase login` opens the browser once to sign you in. *No CLI?* Dashboard → **Edge Functions → Deploy a new function → Via Editor**, name it `send-alert`, create the two files `index.ts` and `fcm.ts` with the same contents, **Deploy**.
+5. **If alerts fail with "Invalid JWT"** in the function's **Logs**: open the function's **Settings** and turn off JWT verification. The function still checks who is calling itself (step 1 in `index.ts`).
+
+### Manual test (Phase 4): two devices
+
+Family member on the **Android phone** (alerts turned on in Phase 3); elder in the laptop browser (`npm run dev`) or on a second device.
+
+1. Put Notme on the family phone in the **background** (press Home), then try again later with it **closed** (swiped away) and with the screen **locked**.
+2. Elder: **Send a money alert** → `2500` → **Send alert to family** → the elder's request screen shows **"Alert sent to Ravi (demo)'s phone."**
+3. Family phone: within a few seconds, a notification *"Money alert from Asha (demo): Asha (demo) is being asked to send ₹2,500…"* with sound. Tap it → Notme opens. *(Check whether it opens **that request** directly, especially from a closed app, and tell us.)*
+4. Family: **Reject request** → the elder sees the **Pause** warning by itself.
+5. **Only once:** on the elder's request screen nothing re-sends; in Supabase **money_requests**, `alert_sent_at` has a time.
+6. **No device:** sign out on the family phone (its token is removed), then send another alert → the elder sees **"…hasn't turned on Notme alerts on their phone, so it won't ring. Call them now…"**.
+7. **Function not reachable** (e.g. elder offline right after sending, or the function not deployed) → **"The alert may not have reached…"** + **Try again**; the request itself is saved either way.
+8. Supabase → **Edge Functions → send-alert → Logs** shows each call; no tokens or keys are ever logged.
+
+## Elder's quick button during a call (onsite, backlog E4 option a)
+
+On the **elder's** Android phone, Notme can keep a quiet notification in the pull-down shade: **"Money call? Tap here first. Check with Ravi in Notme before you pay anyone."** During a scam call the elder pulls down from the top of the screen (this works over the call screen) and taps it; Notme opens on **Send a money alert**. It uses Capacitor's official Local Notifications plugin: no server, no special "draw over other apps" permission.
+
+### Manual test (quick button)
+1. On the phone, sign in as the **elder**. A banner **"Add a quick button for money calls"** appears → **Add the quick button** → Android asks to allow notifications → **Allow**.
+2. Pull down the notification shade → **"Money call? Tap here first."** is there, without a sound or pop-up.
+3. Go to the home screen (or another app), pull down the shade, tap it → Notme opens on **Send a money alert**. Repeat with Notme **closed** (swiped away). *(Tell us whether it opens straight on Send a money alert from a closed app, or on Home.)*
+4. **During a call:** call the phone from another phone, answer, pull down the shade over the call screen, tap the button → Notme opens; the call keeps going.
+5. Try to swipe it away. On some Android versions you can; open Notme and it comes back.
+6. Sign out → the button disappears. Sign in as a **family** member → no quick-button banner.
+7. Restart the phone → the button comes back the next time Notme is opened.
+
 ## Scripts
 
 | Command | What it does |
@@ -202,8 +250,10 @@ The database lives in a free [Supabase](https://supabase.com) project. Everythin
 | `supabase/migrations/0005_server_time.sql` | `server_now()`: lets the app correct countdowns for a phone with a wrong clock |
 | `supabase/migrations/0006_amount_only.sql` | **Onsite:** removes the recipient and note columns; `create_money_request` now takes only the amount (+ demo timeout) |
 | `supabase/migrations/0007_push_tokens.sql` | **Onsite:** `push_tokens` table (app users can't read or write it) + `register_push_token` / `unregister_push_token` |
+| `supabase/migrations/0008_alert_sent.sql` | **Onsite:** `money_requests.alert_sent_at`, so each request rings the family phone at most once |
+| `supabase/functions/send-alert/` | **Onsite:** the Edge Function that sends the alert through Firebase (`index.ts`; tested helpers in `fcm.ts`) |
 | `supabase/checks/rls_checks.sql` | 45 automatic security checks; prints PASS/FAIL per check |
-| `supabase/checks/deploy_checks.sql` | Read-only settings check before a demo (RLS on, no anon access, read-only tables, private token table, function rights, Realtime, amount-only schema): 36 × PASS |
+| `supabase/checks/deploy_checks.sql` | Read-only settings check before a demo (RLS on, no anon access, read-only tables, private token table, function rights, Realtime, amount-only schema, `alert_sent_at`): 37 × PASS |
 
 0001–0005 come from the pre-event Flod prototype unchanged; 0006 onwards were written onsite.
 
@@ -213,8 +263,8 @@ Dashboard labels may differ slightly between Supabase versions.
 
 1. **Create a NEW project for Notme.** Keep the old Flod project as it is: 0006 removes columns the Flod web app needs, and Flod is the backup demo. Sign in at supabase.com → **New project** (name it e.g. `notme`). Pick a region near your users (for India, Mumbai). Save the database password in a password manager; you will not need it for this app, and it must never go into this repo.
 2. **Email sign-in for the demo.** **Authentication → Sign In / Providers → Email**: keep Email enabled and turn **off "Confirm email"**. *Why:* Supabase's built-in email sender allows only a few emails per hour, which breaks a live demo. *Trade-off:* anyone can sign up with any address. Acceptable for synthetic demo accounts only; documented as a limitation.
-3. **Apply the migrations, in order.** **SQL Editor → New query** → paste the whole of `0001_tables.sql` → **Run** → expect "Success. No rows returned". Repeat with `0002_rls.sql`, then `0003_functions.sql`, `0004_realtime.sql`, `0005_server_time.sql`, `0006_amount_only.sql` and `0007_push_tokens.sql`. The editor may warn about "destructive operations" (`revoke`, `drop policy if exists`, `drop column`); that is expected. Each file is safe to run again if something went wrong halfway.
-4. **Run the security checks.** New query → paste `supabase/checks/rls_checks.sql` → **Run**. Every row should say **PASS** (45 rows). Then run `supabase/checks/deploy_checks.sql`: 36 × **PASS**. The script creates four throwaway `@example.test` users and deletes them again. If any row says FAIL, stop and investigate before continuing.
+3. **Apply the migrations, in order.** **SQL Editor → New query** → paste the whole of `0001_tables.sql` → **Run** → expect "Success. No rows returned". Repeat with `0002_rls.sql`, then `0003_functions.sql`, `0004_realtime.sql`, `0005_server_time.sql`, `0006_amount_only.sql`, `0007_push_tokens.sql` and `0008_alert_sent.sql`. The editor may warn about "destructive operations" (`revoke`, `drop policy if exists`, `drop column`); that is expected. Each file is safe to run again if something went wrong halfway.
+4. **Run the security checks.** New query → paste `supabase/checks/rls_checks.sql` → **Run**. Every row should say **PASS** (45 rows). Then run `supabase/checks/deploy_checks.sql`: 37 × **PASS**. The script creates four throwaway `@example.test` users and deletes them again. If any row says FAIL, stop and investigate before continuing.
 5. **Double-check in the dashboard.** **Table Editor**: each of the four tables should show RLS as enabled. **Advisors → Security Advisor**: there should be no errors about these tables.
 6. **Copy the two public settings** (needed from Phase 4). **Project Settings → API Keys** (and **Data API** for the URL): copy the **Project URL** and the **publishable key** (or the legacy **anon public** key). Then:
    ```bash
@@ -229,6 +279,10 @@ With Docker Desktop running, `npx supabase init` then `npx supabase start` start
 
 ## Prototype limitations (database)
 
+- The elder's quick button is a notification: newer Android versions let people swipe it away, and it is not restored after a phone restart until Notme is opened. It only helps if the elder remembers to pull down the shade (practise it once with the family).
+- The Local Notifications plugin adds the Android permissions `SCHEDULE_EXACT_ALARM`, `RECEIVE_BOOT_COMPLETED` and `WAKE_LOCK` to the app (used for scheduled notifications, which Notme doesn't use).
+- The alert is sent by the **elder's app** calling `send-alert` right after saving the request. If the app loses its connection in between, the request is saved but nothing rings; the elder sees "may not have reached… call them" with **Try again**, and the family member still sees the request when they open Notme. (A database webhook could send it from the server instead; not built.)
+- "Alert sent" means Firebase **accepted** the alert, not that the family member saw it, which is why the elder is still told not to pay until they answer.
 - Push delivery is **best effort**: battery savers, Do Not Disturb, a denied permission or no network can delay or drop an alert. The database and the in-app inbox stay the truth, and the elder's timeout warning covers "no answer".
 - A device token moves to whichever family account registers it last (one phone, one account). An account that somehow learned another phone's token could take its alerts over; tokens never leave the phone and Supabase, which makes this unlikely, but it is not prevented.
 - Alerts are shown on the lock screen (they are urgent), so anyone holding the family member's phone can read the elder's demo name and the amount.

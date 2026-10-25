@@ -2,22 +2,24 @@ import { useEffect, useRef, useState } from 'react'
 import { ConnectionNotice } from './components/ConnectionNotice'
 import { Layout } from './components/Layout'
 import { NotificationsBanner } from './components/NotificationsBanner'
+import { QuickAccessBanner } from './components/QuickAccessBanner'
 import { REQUEST_TIMEOUT_SECONDS } from './config'
 import { useBackButton } from './hooks/useBackButton'
 import { useMyRequests } from './hooks/useMyRequests'
 import { useNewWarnings } from './hooks/useNewWarnings'
 import { useNow } from './hooks/useNow'
 import { usePushNotifications } from './hooks/usePushNotifications'
+import { useQuickAccess } from './hooks/useQuickAccess'
 import { useRequestUpdates } from './hooks/useRequestUpdates'
 import { useServerOffset } from './hooks/useServerOffset'
 import { unlockAlertSound } from './lib/alertSound'
-import { createMoneyRequest, respondToRequest } from './lib/api/requests'
+import { createMoneyRequest, respondToRequest, sendAlert } from './lib/api/requests'
 import { AboutSafety } from './pages/AboutSafety'
 import { CreateRequest } from './pages/CreateRequest'
 import { ElderHome } from './pages/ElderHome'
 import { FamilyInbox } from './pages/FamilyInbox'
 import { RequestDetail } from './pages/RequestDetail'
-import type { FamilyDecision, NewRequestInput, Profile, UserRole } from './types/domain'
+import type { AlertState, FamilyDecision, NewRequestInput, Profile, UserRole } from './types/domain'
 import type { View } from './types/view'
 
 interface SignedInAppProps {
@@ -49,6 +51,9 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
   const serverOffsetMs = useServerOffset()
   const nowMs = useNow() + serverOffsetMs
   const { newWarnings, markSeen } = useNewWarnings(requests, nowMs, serverOffsetMs, role === 'elder')
+  // Elder: how the phone alert for each request went (onsite, Phase 4). Kept only
+  // while the app is open; after a reload the saved alertSentAt shows "sent".
+  const [alerts, setAlerts] = useState<Record<string, AlertState>>({})
 
   // Browsers only allow sound after the person has tapped or typed on the page,
   // so unlock the warning beep at their first tap or key press.
@@ -96,10 +101,12 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
 
   // Family member on Android: alerts that ring the phone, and tapping one opens the request.
   const push = usePushNotifications(role === 'family', openRequest)
+  // Elder on Android: a quick button in the notification shade that opens "Send a money alert".
+  const quick = useQuickAccess(role === 'elder', familyMember.displayName, () => goTo({ name: 'createRequest' }))
 
-  /** Remove this phone's alert token first (needs the session), then sign out. */
+  /** Remove this phone's alert token and quick button first (needs the session), then sign out. */
   async function handleSignOut() {
-    await push.forgetDevice()
+    await Promise.all([push.forgetDevice(), quick.remove()])
     onSignOut()
   }
 
@@ -113,6 +120,20 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
     const created = await createMoneyRequest(input, REQUEST_TIMEOUT_SECONDS)
     upsert(created)
     openRequest(created.id)
+    // The request is saved either way; the alert is the extra "ring their phone" step.
+    void alertFamily(created.id)
+  }
+
+  /** Ask the server to ring the family member's phone; never throws (the screen shows the outcome). */
+  async function alertFamily(requestId: string) {
+    setAlerts((previous) => ({ ...previous, [requestId]: 'sending' }))
+    let outcome: AlertState
+    try {
+      outcome = await sendAlert(requestId)
+    } catch {
+      outcome = 'failed'
+    }
+    setAlerts((previous) => ({ ...previous, [requestId]: outcome }))
   }
 
   /**
@@ -172,6 +193,8 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
             familyMember={request && findPerson(request.familyId)}
             viewerRole={role}
             nowMs={nowMs}
+            alert={request && (alerts[request.id] ?? (request.alertSentAt ? 'sent' : undefined))}
+            onRetryAlert={() => void alertFamily(view.requestId)}
             onRespond={handleRespond}
             onBack={() => goTo(homeFor(role))}
           />
@@ -196,6 +219,12 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
         error={push.error}
         elderName={elder.displayName}
         onTurnOn={() => void push.turnOn()}
+      />
+      <QuickAccessBanner
+        permission={quick.permission}
+        error={quick.error}
+        familyName={familyMember.displayName}
+        onTurnOn={() => void quick.turnOn()}
       />
       {showLoading ? (
         <p className="loading" role="status">

@@ -12,6 +12,7 @@ function request(id: string, createdAt: string, status: MoneyRequest['status'] =
     createdAt,
     expiresAt: '2026-10-23T10:01:00.000Z',
     respondedAt: status === 'pending' ? null : '2026-10-23T10:00:30.000Z',
+    alertSentAt: null,
   }
 }
 

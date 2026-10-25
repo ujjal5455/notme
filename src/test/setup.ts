@@ -4,7 +4,9 @@ import { cleanup } from '@testing-library/react'
 import { afterEach } from 'vitest'
 
 // jsdom (the fake browser used by tests) has no real scrolling, so give it a no-op.
-window.scrollTo = () => {}
+// Some tests run in plain Node instead (e.g. the Edge Function helpers), where
+// there is no window at all.
+if (typeof window !== 'undefined') window.scrollTo = () => {}
 
 // Remove whatever the previous test rendered so tests do not affect each other.
 afterEach(() => {

@@ -12,6 +12,8 @@ export interface MoneyRequestRow {
   created_at: string
   expires_at: string
   responded_at: string | null
+  /** Added by 0008 (onsite); missing on rows from older code paths. */
+  alert_sent_at?: string | null
 }
 
 export function toMoneyRequest(row: MoneyRequestRow): MoneyRequest {
@@ -24,7 +26,25 @@ export function toMoneyRequest(row: MoneyRequestRow): MoneyRequest {
     createdAt: row.created_at,
     expiresAt: row.expires_at,
     respondedAt: row.responded_at,
+    alertSentAt: row.alert_sent_at ?? null,
   }
+}
+
+/**
+ * Elder: ask the server to ring the linked family member's phone (onsite,
+ * Phase 4). Only the request id is sent; the send-alert Edge Function checks
+ * that the caller is this request's elder and finds the receiver itself.
+ * Returns 'sent' (Firebase accepted it, or it was already sent) or
+ * 'no_device' (the family member hasn't turned alerts on). Throws if the
+ * alert could not be sent, so the screen can offer "Try again".
+ */
+export async function sendAlert(requestId: string): Promise<'sent' | 'no_device'> {
+  const { data, error } = await supabase.functions.invoke('send-alert', { body: { request_id: requestId } })
+  if (error) throw new Error('The alert could not be sent.')
+  const result = data as { sent?: number; reason?: string } | null
+  if (result?.reason === 'no_device') return 'no_device'
+  if ((result?.sent ?? 0) > 0 || result?.reason === 'already_sent') return 'sent'
+  throw new Error('The alert could not be sent.')
 }
 
 /**

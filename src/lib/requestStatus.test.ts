@@ -14,6 +14,7 @@ function makeRequest(overrides: Partial<MoneyRequest> = {}): MoneyRequest {
     createdAt: '2026-10-21T10:00:00.000Z',
     expiresAt: '2026-10-21T10:01:00.000Z',
     respondedAt: null,
+    alertSentAt: null,
     ...overrides,
   }
 }

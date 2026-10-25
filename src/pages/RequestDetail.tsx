@@ -1,10 +1,11 @@
+import { AlertStatus } from '../components/AlertStatus'
 import { FamilyResponse } from '../components/FamilyResponse'
 import { StatusBadge } from '../components/StatusBadge'
 import { StatusBanner } from '../components/StatusBanner'
 import { TimeLeft } from '../components/TimeLeft'
 import { formatDateTime, formatInr } from '../lib/format'
 import { getEffectiveStatus } from '../lib/requestStatus'
-import type { FamilyDecision, MoneyRequest, Profile, UserRole } from '../types/domain'
+import type { AlertState, FamilyDecision, MoneyRequest, Profile, UserRole } from '../types/domain'
 
 interface RequestDetailProps {
   request: MoneyRequest | undefined
@@ -12,6 +13,9 @@ interface RequestDetailProps {
   familyMember: Profile | undefined
   viewerRole: UserRole
   nowMs: number
+  /** Elder only: how the phone alert went (onsite, Phase 4). */
+  alert?: AlertState
+  onRetryAlert?: () => void
   onRespond: (requestId: string, decision: FamilyDecision) => Promise<void>
   onBack: () => void
 }
@@ -22,6 +26,8 @@ export function RequestDetail({
   familyMember,
   viewerRole,
   nowMs,
+  alert,
+  onRetryAlert,
   onRespond,
   onBack,
 }: RequestDetailProps) {
@@ -62,7 +68,12 @@ export function RequestDetail({
       )}
 
       {viewerRole === 'elder' ? (
-        <StatusBanner status={status} familyName={familyName} />
+        <>
+          <StatusBanner status={status} familyName={familyName} />
+          {status === 'pending' && (
+            <AlertStatus state={alert} familyName={familyName} onRetry={() => onRetryAlert?.()} />
+          )}
+        </>
       ) : (
         <FamilyResponse
           status={status}

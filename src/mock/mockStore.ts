@@ -30,6 +30,7 @@ export function createRequest(
     createdAt: new Date(nowMs).toISOString(),
     expiresAt: new Date(nowMs + REQUEST_TIMEOUT_SECONDS * 1000).toISOString(),
     respondedAt: null,
+    alertSentAt: null,
   }
   return { requests: [created, ...requests], created }
 }

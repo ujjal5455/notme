@@ -51,6 +51,8 @@ function createFake() {
     realtime: 'live' as 'live' | 'fail',
     serverAheadMs: 0,
     serverTimeMissing: false,
+    // What the send-alert Edge Function does (onsite, Phase 4).
+    alert: 'sent' as 'sent' | 'no_device' | 'fail',
   }
   /** The database's clock. Every time the "server" sets or checks uses this. */
   const serverNow = () => Date.now() + state.serverAheadMs
@@ -67,6 +69,7 @@ function createFake() {
     state.realtime = 'live'
     state.serverAheadMs = 0
     state.serverTimeMissing = false
+    state.alert = 'sent'
   }
 
   /** Realtime delivery: tell every open channel whose owner may read this request. */
@@ -235,6 +238,7 @@ function createFake() {
         created_at: new Date(now).toISOString(),
         expires_at: new Date(now + timeout * 1000).toISOString(),
         responded_at: null,
+        alert_sent_at: null,
       }
       tables.money_requests.push(row)
       broadcast('INSERT', row)
@@ -308,6 +312,25 @@ function createFake() {
       },
     },
     from,
+    /** The send-alert Edge Function (supabase/functions/send-alert), simplified. */
+    functions: {
+      async invoke(name: string, options: { body?: Record<string, unknown> } = {}): Promise<Result> {
+        if (state.networkDown) return fail('Failed to send a request to the Edge Function')
+        const non2xx = fail('Edge Function returned a non-2xx status code')
+        if (name !== 'send-alert') return non2xx
+        const me = uid()
+        const row = tables.money_requests.find((r) => r.id === options.body?.request_id)
+        // Same rules as the function: signed in, my request, still pending, not expired.
+        if (!me || !row || row.elder_id !== me) return non2xx
+        if (row.status !== 'pending' || Date.parse(String(row.expires_at)) <= serverNow()) return non2xx
+        if (row.alert_sent_at) return ok({ sent: 0, reason: 'already_sent' })
+        if (state.alert === 'fail') return non2xx
+        if (state.alert === 'no_device') return ok({ sent: 0, reason: 'no_device' })
+        row.alert_sent_at = new Date(serverNow()).toISOString()
+        broadcast('UPDATE', row)
+        return ok({ sent: 1 })
+      },
+    },
     async rpc(name: string, args: Record<string, unknown> = {}): Promise<Result> {
       if (state.networkDown) return NETWORK_ERROR
       const fn = functions[name]

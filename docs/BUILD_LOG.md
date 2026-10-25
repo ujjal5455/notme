@@ -534,4 +534,59 @@ The user asked for (1) a continuous, alarm-like alert sound and (2) a full-scree
 
 Later the same night (2026-10-25) the user also asked for **vibration** when sound isn't possible, and an **elder quick-access button**: during a scam call the elder taps a floating button that opens Notme. All four are recorded as backlog items E1–E4 in `docs/PLAN.md` §9, with options and the open decisions (native Java for the alarm channel; which quick-access option). Nothing built yet; Phase 4 recommended first. **Decision (user, 2026-10-25):** E4 = option (a), the always-present notification ("Money call? Tap to check with family"), not the floating bubble that needs "Display over other apps".
 
+Phase 3 committed as `4aa6999` `(onsite)` (no secret files staged; checked).
+
+---
+
+## 2026-10-25 · Phase 4 (Notme) — The server sends the alert (Edge Function) `[onsite]` *(code done; deploy and phone test pending)*
+
+**Docs read (2026-10-25):** Supabase Edge Function secrets (auto-provided `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEYS`/`SUPABASE_SECRET_KEYS` dictionaries, legacy `SUPABASE_ANON_KEY`/`SUPABASE_SERVICE_ROLE_KEY`; own secrets via Dashboard → Edge Functions → Secrets, names can't start with `SUPABASE_`), Supabase function auth (`verify_jwt` on by default), Google service-account OAuth for REST (RS256 JWT, `exp` ≤ 1 h, `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer` at `https://oauth2.googleapis.com/token`), FCM v1 send endpoint and scope, FCM error codes (only `UNREGISTERED` means delete the token), FCM priority (high-priority messages are delivered immediately even in Doze). The FCM REST reference page itself could not be read by the tool (navigation only); the Android field names used (`channel_id`, `notification_priority`, `visibility`, `default_sound`, `ttl` as `"57s"`) are from general knowledge and must be confirmed by the phone test.
+
+**Done**
+- `supabase/migrations/0008_alert_sent.sql`: `money_requests.alert_sent_at` (written only by the server; app users keep SELECT only). `deploy_checks.sql` row for it → **37**.
+- `supabase/functions/send-alert/index.ts` (Deno): CORS; caller from `auth.getUser(jwt)`; request id must be a UUID; request read **as the caller** (RLS) and checked to be the caller's own, pending, unexpired; Firebase secret checked before changing anything; claim with a conditional update on `alert_sent_at`; receiver's tokens read from `push_tokens` by `request.family_id`; Google access token (signed JWT, cached ~1 h); one FCM message per token; delete `UNREGISTERED` tokens; if nothing was sent, clear the claim (so Retry works); never logs tokens or keys.
+- `supabase/functions/send-alert/fcm.ts` + `fcm.test.ts` (9 tests, Node): message content and Android options, TTL, error codes, base64url, and a JWT signed with a generated key verified with its public key.
+- App: `sendAlert()` in `src/lib/api/requests.ts` (sends only `request_id`); `alertSentAt` on `MoneyRequest`; `SignedInApp` calls it right after creating a request and keeps the outcome; new `src/components/AlertStatus.tsx` on the elder's request screen ("Alerting…", "Alert sent to Ravi's phone.", "hasn't turned on Notme alerts…", "may not have reached…", each problem with "Call them now…" and **Try again**). The fake Supabase gained `functions.invoke('send-alert')` with the same rules.
+- `src/test/setup.ts` works without `window` (for the Node test). `.gitignore` also blocks `*firebase-adminsdk*.json` (the name Firebase gives the key file).
+- README "Automatic alerts" section (0008, service-account key, secret, CLI or dashboard deploy, JWT note, 8-step two-device test) and 2 new limitations; LEARNING_GUIDE §16.
+
+**Checks run by the AI assistant (2026-10-25, about 00:30 IST)**
+
+| Check | Result |
+|---|---|
+| `npm run typecheck`, `npm run lint` | ✅ |
+| `npm test` | ✅ 18 files, **119/119** (9 function-helper tests, 1 API test, 4 app tests new; one older test adjusted for the second status message) |
+| `npm run android:sync` + `gradlew assembleDebug` (JBR 21) | ✅ BUILD SUCCESSFUL |
+| `npx supabase --version` / `functions deploy --help` | 2.122.0; `--use-api` ("Bundle functions server-side without using Docker") and `--project-ref` available |
+
+**Not run yet (user):** 0008 on the Notme project; the Firebase service-account secret; deploying `send-alert`; the two-device test. The function's `index.ts` has **not been executed anywhere** yet (only its helpers are tested).
+
+**AI assistance disclosure:** migration, function, app code, tests and docs by the AI assistant under the user's direction.
+
+---
+
+## 2026-10-25 · Backlog E4 (a): the elder's quick button `[onsite]` *(code done; phone test pending)*
+
+**Docs read (2026-10-25):** Capacitor Local Notifications (schema: 32-bit `id`, `ongoing`, `autoCancel`, `channelId`, `extra`; "if the channel doesn't exist, the notification will not fire"; permissions via `display`; `localNotificationActionPerformed`; `cancel`; since 8.3.0 `schedule()` asks for the notification permission itself).
+
+**Done**
+- `@capacitor/local-notifications` **8.3.1** (MIT). Its manifest adds `RECEIVE_BOOT_COMPLETED`, `WAKE_LOCK`, `POST_NOTIFICATIONS` and `SCHEDULE_EXACT_ALARM` (checked in the merged manifest; listed in README limitations and DISCLOSURE).
+- `src/lib/quickAccess.ts`: creates the quiet `quick-check` channel (importance 2) **before** posting; one fixed id 7001; "Money call? Tap here first." / "Check with {family member} in Notme before you pay anyone."; `ongoing`, no auto-cancel; tap listener filtered by `extra.kind`; hide.
+- `src/hooks/useQuickAccess.ts` (elder + Android only; never asks on start; re-posts on every app start once allowed; tap → **Send a money alert**; `remove()` before sign-out, never blocking it) and `src/components/QuickAccessBanner.tsx` (explain + **Add the quick button**; Settings path if refused; set-up error). `SignedInApp` shows the banner for elders and removes the button before sign-out.
+- Tests: 4 banner, 6 hook (plugin wrapper faked).
+- README section + 7-step phone test + 2 limitations; LEARNING_GUIDE §15 subsection; DISCLOSURE; PLAN E4.
+
+**Checks run by the AI assistant (2026-10-25, about 01:00 IST)**
+
+| Check | Result |
+|---|---|
+| `npm run typecheck`, `npm run lint` | ✅ |
+| `npm test` | ✅ 20 files, **129/129** |
+| `npm run android:sync` | ✅ 3 plugins: app 8.1.2, local-notifications 8.3.1, push-notifications 8.1.3 |
+| `gradlew assembleDebug` (JBR 21) | ✅ BUILD SUCCESSFUL in 2 m 7 s |
+
+**Not run yet (user):** the quick-button phone test (README). Not known yet: whether tapping it opens **Send a money alert** directly when Notme was **closed** (the plugin docs don't say whether the tap event survives a cold start); the Home screen's first button is **Send a money alert** either way.
+
+**AI assistance disclosure:** code, tests and docs by the AI assistant under the user's direction.
+
 **AI assistance disclosure:** setup checks, config, scripts and docs by the AI assistant under the user's direction.

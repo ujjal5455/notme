@@ -466,6 +466,19 @@ button:disabled {
   font-variant-numeric: tabular-nums; /* digits don't jump around as they change */
 }
 
+/* ---------- Phone alert status for the elder (onsite, Phase 4) ---------- */
+.alert-status {
+  margin: 0.75rem 0;
+  font-weight: 600;
+}
+
+.alert-status-problem {
+  padding: 0.75rem 1rem;
+  border: 3px solid var(--color-rejected-text);
+  border-radius: var(--radius);
+  font-weight: 400;
+}
+
 /* ---------- Wider screens ---------- */
 @media (min-width: 48rem) {
   #root {

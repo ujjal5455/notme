@@ -24,6 +24,8 @@ coverage
 # service-account key is a real secret and lives only in Supabase secrets.
 google-services.json
 *service-account*.json
+# Firebase's "Generate new private key" download is named like this:
+*firebase-adminsdk*.json
 *.jks
 *.keystore
 

@@ -35,6 +35,7 @@ export const mockRequests: MoneyRequest[] = [
     createdAt: minutes(-1),
     expiresAt: minutes(9),
     respondedAt: null,
+    alertSentAt: null,
   },
   {
     id: 'req-2',
@@ -45,6 +46,7 @@ export const mockRequests: MoneyRequest[] = [
     createdAt: minutes(-60),
     expiresAt: minutes(-50),
     respondedAt: minutes(-58),
+    alertSentAt: null,
   },
   {
     id: 'req-3',
@@ -55,6 +57,7 @@ export const mockRequests: MoneyRequest[] = [
     createdAt: minutes(-180),
     expiresAt: minutes(-170),
     respondedAt: minutes(-178),
+    alertSentAt: null,
   },
   {
     id: 'req-4',
@@ -66,5 +69,6 @@ export const mockRequests: MoneyRequest[] = [
     createdAt: minutes(-1440),
     expiresAt: minutes(-1430),
     respondedAt: null,
+    alertSentAt: null,
   },
 ]

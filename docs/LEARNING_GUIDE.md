@@ -21,7 +21,7 @@ This guide teaches you to rebuild Flod **from an empty folder without AI**. It w
 | 13 | **Notme:** what changed from Flod and why | **Part B** §13 (at the very end) | ✅ onsite Phase 1 |
 | 14 | Capacitor: a web app inside an Android app | Part B §14 | ✅ onsite Phase 2 |
 | 15 | Push notifications: FCM, tokens, channels, permission | Part B §15 | ✅ onsite Phase 3 |
-| 16 | Supabase Edge Functions and server-only secrets | Part B §16 | ⏳ Phase 4 |
+| 16 | Supabase Edge Functions and server-only secrets | Part B §16 | ✅ onsite Phase 4 |
 | 17 | Testing on real Android phones and failure modes | Part B §17 | ⏳ Phase 5 |
 | 18 | Disclosure: pre-event vs onsite, and how git shows it | Part B §18 | ⏳ outline now; complete in Phase 6 |
 
@@ -1686,6 +1686,25 @@ Android shows its permission dialog only a couple of times; if the person says n
 5. Later Ravi taps an alert carrying `request_id` → `pushNotificationActionPerformed` → `openRequest(id)` → the request screen.
 6. Ravi signs out → `forgetDevice()` → `unregister_push_token` deletes his row → then the normal sign-out.
 
+### The elder's quick button: a *local* notification (onsite, backlog E4 a)
+Push (above) comes **from a server**. A **local notification** is posted **by the app itself**, on the phone, with no server at all. Notme uses one as a button the elder can reach during a scam call: the notification shade can be pulled down over the call screen.
+
+| | Push alert (family) | Quick button (elder) |
+|---|---|---|
+| Who creates it | the `send-alert` server function, via FCM | the app (`src/lib/quickAccess.ts`) |
+| Plugin | `@capacitor/push-notifications` | `@capacitor/local-notifications` |
+| Channel | `money-alerts`/`money-alarm`, importance 5 (loud) | `quick-check`, importance 2 (silent, no pop-up) |
+| Stays? | until tapped/dismissed | `ongoing: true`, `autoCancel: false`, re-posted every time Notme opens |
+| Tap does | opens the request | opens **Send a money alert** |
+
+Same habits as push: never ask for permission on start (`QuickAccessBanner` explains, then asks); keep plugin calls in one file; a "latest" ref so the tap handler knows the current screen; remove it before sign-out. One rule from the plugin docs worth remembering: **a notification on a channel that doesn't exist never shows**, so `showQuickAccess` creates the channel first.
+
+| File | What / why | Common mistake | Practice (no AI) |
+|---|---|---|---|
+| `src/lib/quickAccess.ts` | Channel, show/hide, tap listener | Giving it a new id each time: the shade fills with copies | Change the text to Hindi and check it on the phone |
+| `src/hooks/useQuickAccess.ts` | Elder + Android only; permission, re-show on open, tap → Send a money alert, remove on sign-out | Asking for permission automatically on start | Hide the button while a request is waiting for an answer, and show it again afterwards |
+| `src/components/QuickAccessBanner.tsx` | Explains and asks | Blocking the elder's home screen until they agree | Add a "Not now" button that hides the banner for this visit |
+
 ### Phase 3 (onsite) exercises (no AI; answers aren't included)
 1. In the Firebase console, send a test message while Notme is **closed**, then while it's **open**. Explain why both show, naming the two settings responsible.
 2. Remove `'alert'` from `presentationOptions`, sync, and predict what changes before you test it.
@@ -1699,7 +1718,72 @@ Android shows its permission dialog only a couple of times; if the person says n
 5. Why is the token removed before sign-out, not after?
 
 ## 16. Supabase Edge Functions and server-only secrets  *(onsite Phase 4)*
-Planned: what runs on the phone vs on a server; why an APK can't keep a secret (anyone can unzip it); Edge Function secrets; verifying the caller's login inside the function; why the receiver comes from the database and never from the request body; FCM HTTP v1 and OAuth access tokens; "at most once" alerts with `alert_sent_at` (idempotency again); what the elder sees if the alert can't be sent.
+
+### Why a server is needed at all
+To ring a phone through Firebase you need Firebase's **service-account key**. That key can message *every* phone of the project. An APK is just a zip file: anyone can unpack it and read every string inside. So the key can never be in the app; it lives in **Supabase Edge Function secrets**, and only server code can use it.
+
+**Analogy:** the app is a customer at a post office counter. It can hand in "please deliver request 3f2c…", but only the clerk (the Edge Function) holds the stamp (the key) and looks up the address (the token) in the back office (the database).
+
+### What `send-alert` does, step by step (`supabase/functions/send-alert/index.ts`)
+1. **Who is calling?** It reads the caller's login token from the `Authorization` header (supabase-js adds it) and asks Supabase Auth: `auth.getUser(jwt)`. No user → 401.
+2. **Which request?** The app sends **only** `{ request_id }`. It must look like a UUID (`isUuid`).
+3. **Read it as the caller.** A client created with the caller's token obeys RLS, so a stranger's request comes back as "not found". The function also checks `elder_id === caller`, `status === 'pending'` and that it hasn't expired.
+4. **Claim it, once.** With the secret (service-role) key: `update money_requests set alert_sent_at = now() where id = … and status = 'pending' and alert_sent_at is null`. Only the first call gets a row back; a second call, a retry or a race answers `already_sent`. *(The same "conditional update" idea as `respond_to_request`.)*
+5. **Find the receiver in the database:** `push_tokens` where `user_id = request.family_id`. Never from the request body, so nobody can make Notme ring someone else's phone.
+6. **Sign in to Google** (`fcm.ts`): build a JWT `{ iss: client_email, scope: firebase.messaging, aud: token URL, iat, exp ≤ 1 h }`, sign it with the private key (RS256, Web Crypto), and swap it at `https://oauth2.googleapis.com/token` for an access token (cached while the function is warm).
+7. **Send** `POST https://fcm.googleapis.com/v1/projects/<id>/messages:send` per token: title, body, `data.request_id`, Android `priority: high`, `ttl` = time left, channel `money-alarm`, `PRIORITY_MAX`, `visibility: PUBLIC`, `tag` = request id.
+8. **Tidy up:** FCM says `UNREGISTERED` → that token is deleted (Firebase's error guide says only that code means "delete"). If nothing was sent, `alert_sent_at` is cleared again so **Try again** can work.
+
+```ts
+// the heart of "at most once" (index.ts, simplified)
+const { data: claimed } = await admin.from('money_requests')
+  .update({ alert_sent_at: new Date().toISOString() })
+  .eq('id', request.id).eq('status', 'pending').is('alert_sent_at', null)
+  .select('id')
+if (!claimed?.length) return reply(req, 200, { sent: 0, reason: 'already_sent' })
+```
+
+### Two kinds of Supabase client inside one function
+| Client | Key | Obeys RLS? | Used for |
+|---|---|---|---|
+| `asCaller` | publishable key + the caller's login token | **yes** | "who are you?" and reading the request as them |
+| `admin` | secret / service-role key | **no** | claiming `alert_sent_at`, reading `push_tokens`, deleting dead tokens |
+
+Every `admin` query is filtered by values that came from the RLS-checked request (`request.id`, `request.family_id`), never by something the app sent.
+
+### What the elder sees (`src/components/AlertStatus.tsx`)
+| Outcome | Message | Why it's worded that way |
+|---|---|---|
+| sending | "Alerting Ravi's phone…" | |
+| sent | "Alert sent to Ravi's phone." | *sent* ≠ *seen*: the banner above still says "Do not pay yet" |
+| no_device | "Ravi hasn't turned on Notme alerts on their phone, so it won't ring. **Call them now…**" + Try again | the next step is a phone call |
+| failed | "The alert may not have reached Ravi's phone. **Call them now…**" + Try again | network, function not deployed, Firebase error |
+
+### Testing it
+- `supabase/functions/send-alert/fcm.test.ts` (Vitest, plain Node): the message contains only name, amount and request id; channel/priority/TTL; only `UNREGISTERED` deletes a token; and a JWT signed with a throwaway key **verifies** with the matching public key.
+- `src/test/fakeSupabase.ts` gained `functions.invoke('send-alert')` with the same rules, so `SignedInApp.test.tsx` checks the four elder messages and Try again.
+- The real function's network calls (Supabase Auth, Google, FCM) are tested **manually** (README Phase 4 test) and through the function's Logs.
+
+### Phase 4 (onsite) file-by-file
+| File | What / why | Inputs → outputs | Common mistake | Practice (no AI) |
+|---|---|---|---|---|
+| `supabase/functions/send-alert/index.ts` | Checks the caller, claims the request, rings the family phone | `{ request_id }` + login → `{ sent }` / `{ reason }` / error | Taking the receiver or the amount from the request body | Add a check that refuses requests older than 10 minutes, and say why it isn't needed |
+| `supabase/functions/send-alert/fcm.ts` | Pure helpers: JWT signing, the FCM message, error codes | service account / alert → JWT / message JSON | Logging the token or the key "to debug" | Add a test that the alert's title and body never contain the word "scam" |
+| `supabase/migrations/0008_alert_sent.sql` | Remembers that an alert went out | — | Letting the app write `alert_sent_at` (then anyone could reset it and spam) | Explain why `alert_sent_at` needs no RLS policy change |
+| `src/lib/api/requests.ts` → `sendAlert` | The app's only call to the function | request id → `'sent' \| 'no_device'`, or throws | Treating any error as "sent" | Make Try again show "Trying again…" while it runs |
+| `src/components/AlertStatus.tsx` | Elder's alert line | state → message | Showing it to the family member | Add an icon that isn't colour-only for "sent" |
+
+### Phase 4 (onsite) exercises (no AI; answers aren't included)
+1. Draw the sequence from the elder's tap to the family phone ringing, with the five boxes from the Phase 0 exercise plus Google's token server. Mark where RLS applies and where it doesn't.
+2. Two phones call `send-alert` for the same request at the same moment. Using the claim query, explain why only one sends.
+3. Someone calls the function with *their own* login but *your* request id. Which line stops them?
+
+### Phase 4 (onsite) self-test
+1. Why can't the Firebase key live in the APK?
+2. What are the two Supabase clients in the function, and when is each used?
+3. What does `alert_sent_at` protect against?
+4. Why does "Alert sent" not mean the elder can pay?
+5. Which FCM error makes the function delete a token, and why only that one?
 
 ## 17. Testing on real Android phones  *(onsite Phase 5)*
 Planned: an Android failure-mode table from real tests (app closed, phone locked, battery saver, Do Not Disturb, permission denied, offline, Supabase down, late/duplicate answers, timeout); why push delivery can never be guaranteed; TalkBack and 200% font checks.
@@ -1742,3 +1826,10 @@ Planned: an Android failure-mode table from real tests (app closed, phone locked
 - **Importance (channel):** how loudly Android presents a channel's notifications; 5 = sound + banner.
 - **Upsert:** insert a row, or update it if one with the same key already exists (`insert … on conflict … do update`).
 - **Heads-up notification:** the banner that drops down over whatever app is open.
+- **Edge Function:** server code hosted by Supabase (Deno + TypeScript), called over HTTPS.
+- **Service account:** a robot Google account; its private key lets a server act for the Firebase project.
+- **JWT (JSON Web Token):** three base64url parts, header.claims.signature; whoever has the public key can check who signed it.
+- **Access token:** a short-lived pass (here 1 hour) that Google gives in exchange for a signed JWT.
+- **CORS:** browser rules that decide whether a page on one origin may call a server on another; the function answers the browser's "may I?" (OPTIONS) request.
+- **Local notification:** a notification the app posts itself, without a server.
+- **Ongoing notification:** one marked so it can't (easily) be swiped away; Android 14+ may still allow it.
