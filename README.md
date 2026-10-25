@@ -11,7 +11,8 @@ Built at **Hackyard Build 2026** on top of the team's **pre-event** web prototyp
 - **From Flod (pre-event):** accounts and in-person pairing, requests saved in Supabase and delivered only to the linked family member, Confirm/Reject through a database function, live updates (Realtime, polling fallback), a countdown corrected to the database's clock, Pause warnings and a best-effort beep, accessibility work, automated tests and docs.
 - **Onsite Phase 1:** renamed to Notme; requests are **amount-only** (no payee/UPI ID, no note) in the form, the screens and the database (`0006_amount_only.sql`).
 - **Onsite Phase 2:** Capacitor 8 Android project added (`android/`, `capacitor.config.ts`); see **Android app** below. Builds with Gradle on Java 21; tested on the emulator (opens) and on a realme GT 6T (user: the elder ↔ family flow works).
-- **Not built yet:** push notifications to the family phone and the server-side alert function. Until then the family member sees a request only while Notme is open.
+- **Onsite Phase 3:** push notifications on the family phone (permission, alert channel, device token saved through `0007_push_tokens.sql`, tap to open a request); see **Push notifications** below.
+- **Not built yet:** the server-side function that sends the alert automatically (Phase 4). Until then a request reaches the family member's phone only while Notme is open, or as a Firebase console test message.
 
 See [`docs/PLAN.md`](docs/PLAN.md) for progress and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md) for what was done and tested.
 
@@ -131,6 +132,42 @@ Phone = Asha (elder). Ravi (family) = a laptop browser with `npm run dev`, or a 
 7. Turn on **Airplane mode**, switch away from Notme and back → "Can't reach the server… don't pay". Turn it off → **Try again** clears it.
 8. **Debugging:** with the phone plugged in, open `chrome://inspect` in Chrome on the laptop → *Notme* → **inspect** shows the app's console, like DevTools for a web page.
 
+## Push notifications (onsite Phase 3)
+
+The **family member's** Android phone can now receive push notifications: Notme explains why, asks for permission when they tap **Turn on alerts**, and saves the phone's **device token** in Supabase. Tapping a notification that carries a `request_id` opens that request. *Sending an alert automatically when the elder taps Send comes in Phase 4; for now you send a test message from the Firebase console.*
+
+### One-time setup (you)
+
+**A. Supabase:** in the SQL Editor run `supabase/migrations/0007_push_tokens.sql`, then `rls_checks.sql` (**45 × PASS**) and `deploy_checks.sql` (**36 × PASS**).
+
+**B. Firebase (free):**
+1. Open https://console.firebase.google.com and sign in with a Google account → **Create a project** → name it `notme-demo` → turn **Google Analytics off** (not needed) → **Create project**.
+2. On the project's start page click the **Android** icon (*Add app*) → **Android package name:** `org.notme.demo` (exactly this) → **App nickname:** `Notme` → leave *SHA-1* empty → **Register app**.
+3. **Download `google-services.json`** and save it as `D:\PROJECTS\Notme\android\app\google-services.json` (in the `android\app` folder, next to `build.gradle`). Git ignores this file; never commit or share it.
+4. Skip the *Add Firebase SDK* steps (Capacitor's Android template already does them) → **Continue to console**.
+5. **⚙ Project settings → Cloud Messaging:** check that *Firebase Cloud Messaging API (V1)* says **Enabled**.
+
+**C. Build:** `npm run android:sync` → Android Studio → **File → Sync Project with Gradle Files** → pick the phone → **Run ▶**.
+
+> ⚠ Don't tap **Turn on alerts** in a build made **without** `google-services.json`: Firebase isn't set up in it and the app can crash.
+
+**D. Battery (realme, Xiaomi, Vivo, Oppo…):** these phones stop background apps to save battery, which can delay alerts. On the family phone: **Settings → Apps → Notme → Battery usage** (or *App battery management*) → **Allow background activity**. Names vary by phone.
+
+### Manual test (Phase 3)
+
+The **family** account must be on the Android device this time (the elder can use the laptop browser).
+
+1. On the phone, sign in as the family member. The banner **"Turn on alerts"** appears → tap it → Android asks *Allow Notme to send you notifications?* → **Allow**. The banner disappears.
+2. Supabase **Table Editor → push_tokens:** one row, whose `user_id` is the family member's id. Copy its `token` (a long text).
+3. Firebase console → **Messaging** → **Create your first campaign** (or *New campaign*) → **Firebase Notification messages** → title `Money alert from Asha (demo)`, text `Test` → **Send test message** → paste the token → **Test**. Try it three times:
+   - Notme **open** on screen → the notification shows (with sound);
+   - Notme in the **background** (press Home) → a banner drops down with sound;
+   - Notme **closed** (swiped away from recent apps) → it still arrives. Tap it → Notme opens.
+4. *(Optional)* If the campaign form has **Additional options → Custom data**, add key `request_id` with the id of a request sent to this family member (Supabase **Table Editor → money_requests → id**). Tapping that notification opens the request. (Phase 4 adds this automatically.)
+5. Sign out on the phone → the `push_tokens` row is gone.
+6. Sign in as an **elder** on the phone → no banner, no permission question.
+7. Answer **Don't allow** once (or turn notifications off in Settings) → Notme says *Alerts are off* and explains how to turn them on; everything else still works.
+
 ## Scripts
 
 | Command | What it does |
@@ -147,7 +184,7 @@ Phone = Asha (elder). Ravi (family) = a laptop browser with `npm run dev`, or a 
 ### What the tests cover
 
 - **Automated (no Supabase needed):** `npm test` runs the tests in 14 files (count in `docs/BUILD_LOG.md`): validation and status rules, components, the whole app flow (sign-in, pairing, create, deliver, answer, live/polling/offline, wrong clock, warnings) against an in-memory fake Supabase (`src/test/fakeSupabase.ts`), and what the browser sends to the database (`src/lib/api/api.test.ts`).
-- **Database security (needs your Supabase project):** `supabase/checks/rls_checks.sql` in the SQL Editor: 37 checks.
+- **Database security (needs your Supabase project):** `supabase/checks/rls_checks.sql` in the SQL Editor: 45 checks.
 - **Manual (two real browsers):** the "Manual test" checklists above for Phases 4–7.
 
 The fake proves the React code reacts correctly to each answer; only `rls_checks.sql` and the manual tests prove the real backend gives those answers.
@@ -164,8 +201,9 @@ The database lives in a free [Supabase](https://supabase.com) project. Everythin
 | `supabase/migrations/0004_realtime.sql` | Turns on live updates (Supabase Realtime) for `money_requests` |
 | `supabase/migrations/0005_server_time.sql` | `server_now()`: lets the app correct countdowns for a phone with a wrong clock |
 | `supabase/migrations/0006_amount_only.sql` | **Onsite:** removes the recipient and note columns; `create_money_request` now takes only the amount (+ demo timeout) |
-| `supabase/checks/rls_checks.sql` | 37 automatic security checks; prints PASS/FAIL per check |
-| `supabase/checks/deploy_checks.sql` | Read-only settings check before a demo (RLS on, no anon access, read-only tables, function rights, Realtime, amount-only schema): 28 × PASS |
+| `supabase/migrations/0007_push_tokens.sql` | **Onsite:** `push_tokens` table (app users can't read or write it) + `register_push_token` / `unregister_push_token` |
+| `supabase/checks/rls_checks.sql` | 45 automatic security checks; prints PASS/FAIL per check |
+| `supabase/checks/deploy_checks.sql` | Read-only settings check before a demo (RLS on, no anon access, read-only tables, private token table, function rights, Realtime, amount-only schema): 36 × PASS |
 
 0001–0005 come from the pre-event Flod prototype unchanged; 0006 onwards were written onsite.
 
@@ -175,8 +213,8 @@ Dashboard labels may differ slightly between Supabase versions.
 
 1. **Create a NEW project for Notme.** Keep the old Flod project as it is: 0006 removes columns the Flod web app needs, and Flod is the backup demo. Sign in at supabase.com → **New project** (name it e.g. `notme`). Pick a region near your users (for India, Mumbai). Save the database password in a password manager; you will not need it for this app, and it must never go into this repo.
 2. **Email sign-in for the demo.** **Authentication → Sign In / Providers → Email**: keep Email enabled and turn **off "Confirm email"**. *Why:* Supabase's built-in email sender allows only a few emails per hour, which breaks a live demo. *Trade-off:* anyone can sign up with any address. Acceptable for synthetic demo accounts only; documented as a limitation.
-3. **Apply the migrations, in order.** **SQL Editor → New query** → paste the whole of `0001_tables.sql` → **Run** → expect "Success. No rows returned". Repeat with `0002_rls.sql`, then `0003_functions.sql`, `0004_realtime.sql`, `0005_server_time.sql` and `0006_amount_only.sql`. The editor may warn about "destructive operations" (`revoke`, `drop policy if exists`, `drop column`); that is expected. Each file is safe to run again if something went wrong halfway.
-4. **Run the security checks.** New query → paste `supabase/checks/rls_checks.sql` → **Run**. Every row should say **PASS** (37 rows). Then run `supabase/checks/deploy_checks.sql`: 28 × **PASS**. The script creates four throwaway `@example.test` users and deletes them again. If any row says FAIL, stop and investigate before continuing.
+3. **Apply the migrations, in order.** **SQL Editor → New query** → paste the whole of `0001_tables.sql` → **Run** → expect "Success. No rows returned". Repeat with `0002_rls.sql`, then `0003_functions.sql`, `0004_realtime.sql`, `0005_server_time.sql`, `0006_amount_only.sql` and `0007_push_tokens.sql`. The editor may warn about "destructive operations" (`revoke`, `drop policy if exists`, `drop column`); that is expected. Each file is safe to run again if something went wrong halfway.
+4. **Run the security checks.** New query → paste `supabase/checks/rls_checks.sql` → **Run**. Every row should say **PASS** (45 rows). Then run `supabase/checks/deploy_checks.sql`: 36 × **PASS**. The script creates four throwaway `@example.test` users and deletes them again. If any row says FAIL, stop and investigate before continuing.
 5. **Double-check in the dashboard.** **Table Editor**: each of the four tables should show RLS as enabled. **Advisors → Security Advisor**: there should be no errors about these tables.
 6. **Copy the two public settings** (needed from Phase 4). **Project Settings → API Keys** (and **Data API** for the URL): copy the **Project URL** and the **publishable key** (or the legacy **anon public** key). Then:
    ```bash
@@ -191,6 +229,9 @@ With Docker Desktop running, `npx supabase init` then `npx supabase start` start
 
 ## Prototype limitations (database)
 
+- Push delivery is **best effort**: battery savers, Do Not Disturb, a denied permission or no network can delay or drop an alert. The database and the in-app inbox stay the truth, and the elder's timeout warning covers "no answer".
+- A device token moves to whichever family account registers it last (one phone, one account). An account that somehow learned another phone's token could take its alerts over; tokens never leave the phone and Supabase, which makes this unlikely, but it is not prevented.
+- Alerts are shown on the lock screen (they are urgent), so anyone holding the family member's phone can read the elder's demo name and the amount.
 - By design the family member sees only the **amount**, not who the money would go to. Their job is to reach the elder on a trusted number, not to judge a payee.
 - Pairing codes have no attempt limit (rate limiting); an 8-character code from 32 characters that expires in 10 minutes makes guessing impractical but not impossible.
 - There is no "unlink" or "change family member" flow; changing a link needs a database admin.

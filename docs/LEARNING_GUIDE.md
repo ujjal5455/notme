@@ -20,7 +20,7 @@ This guide teaches you to rebuild Flod **from an empty folder without AI**. It w
 | 12 | Diagrams, glossary, common errors, exercises, rebuild checklist, judge Q&A | **§12** near the end; each phase's exercises and self-test | ✅ |
 | 13 | **Notme:** what changed from Flod and why | **Part B** §13 (at the very end) | ✅ onsite Phase 1 |
 | 14 | Capacitor: a web app inside an Android app | Part B §14 | ✅ onsite Phase 2 |
-| 15 | Push notifications: FCM, tokens, channels, permission | Part B §15 | ⏳ Phase 3 |
+| 15 | Push notifications: FCM, tokens, channels, permission | Part B §15 | ✅ onsite Phase 3 |
 | 16 | Supabase Edge Functions and server-only secrets | Part B §16 | ⏳ Phase 4 |
 | 17 | Testing on real Android phones and failure modes | Part B §17 | ⏳ Phase 5 |
 | 18 | Disclosure: pre-event vs onsite, and how git shows it | Part B §18 | ⏳ outline now; complete in Phase 6 |
@@ -1626,7 +1626,77 @@ The first build failed with that message. **Major version 69 = Java 25.** Androi
 5. Which tool shows the app's JavaScript console when it runs on a phone?
 
 ## 15. Push notifications  *(onsite Phase 3)*
-Planned: push vs Realtime (who wakes whom); Firebase Cloud Messaging; the device **token** ("the phone's postal address for notifications"); `google-services.json`; the Android 13 permission prompt; notification **channels** and importance; foreground vs background vs killed app; `0007_push_tokens.sql` and why tokens are written only through a function and never readable from the app; opening a request from a notification tap.
+
+### Push vs Realtime: who wakes whom
+- **Realtime** (Phase 6 of Flod) is a phone line the *app* keeps open. It only works while Notme is running.
+- **Push** is a doorbell wired through **Google**. A server presses it; Android itself rings, even when Notme is closed or the phone is locked.
+
+**Analogy:** Realtime is staying on a call. Push is a letter delivered to your door; the **device token** is your postal address.
+
+```
+ family phone ──① "give me an address"──► Firebase (FCM) ──token──► phone
+ family phone ──② register_push_token(token)──► Supabase  push_tokens
+ (Phase 4) server ──③ "send to token X"──► FCM ──► Android shows the alert
+ family taps it ──④ app opens with data.request_id ──► request screen
+```
+
+### The pieces and why each exists
+| Piece | Why |
+|---|---|
+| **Firebase project + `google-services.json`** | Tells the Android app which Firebase project it belongs to. Not a password, but kept out of git anyway (`.gitignore`) |
+| `POST_NOTIFICATIONS` permission in `AndroidManifest.xml` | Since Android 13, apps must **ask** before showing notifications |
+| **Channel** `money-alerts`, importance 5 | Android groups notifications into channels; importance 5 = sound + a banner over other apps. The manifest makes it the default channel |
+| `presentationOptions: ['alert', 'sound']` in `capacitor.config.ts` | Without it, Capacitor shows *nothing* while Notme is open on screen |
+| `0007_push_tokens.sql` | Stores tokens where app users can't read them (RLS on, no policies, no grants); writes go only through `register_push_token` / `unregister_push_token`, which use `auth.uid()` |
+
+### Why tokens are so locked down
+A token is enough to send that phone a notification. If any signed-in account could read the table, a stranger could list every family member's phone. So:
+```sql
+alter table public.push_tokens enable row level security;
+revoke all on public.push_tokens from anon, authenticated;   -- and no policies at all
+```
+Only the server (Phase 4, with the service-role key) reads it. `rls_checks.sql` proves it: "family B cannot read the token table", "stranger C cannot delete family B's token", "an elder account cannot save a token", "logged-out visitor cannot save a token".
+
+### Ask politely, at the right moment
+Android shows its permission dialog only a couple of times; if the person says no, the app can't ask again. So Notme **never asks on start**. `NotificationsBanner` first explains *why* ("When Asha is asked for money, your phone will ring…"), and the dialog appears only when they tap **Turn on alerts**. If they refuse, the banner says how to turn alerts on in Settings, and the app keeps working without push.
+
+### The code, file by file
+| File | What / why | Inputs → outputs | Common mistake | Practice (no AI) |
+|---|---|---|---|---|
+| `src/lib/push.ts` | The only file that talks to the plugin: permission, channel, listeners, `register()` | handlers → token / tap events; returns a "stop listening" function | Calling `register()` before adding the `registration` listener: the token arrives with nobody listening | Add a `pushNotificationReceived` listener that logs the alert's title while the app is open |
+| `src/hooks/usePushNotifications.ts` | For family accounts on Android: channel, permission state, start listening, save the token, `forgetDevice()` before sign-out | `enabled`, `onOpenRequest` → `{ permission, error, turnOn, forgetDevice }` | Asking for permission inside a `useEffect` (no explanation, no tap) | Show "Alerts are on" for 3 seconds after permission is granted |
+| `src/components/NotificationsBanner.tsx` | Explains, asks, or says how to fix | permission + error → banner or nothing | Blocking the whole app until alerts are on | Add a hint about battery settings on realme phones |
+| `src/lib/api/pushTokens.ts` | Sends only the token to the database | token → `rpc('register_push_token', { p_token })` | Sending a user id: the database must decide who is calling | Explain why `unregister_push_token` gives no error for someone else's token |
+| `supabase/migrations/0007_push_tokens.sql` | Private token table + two narrow functions | — | Adding a SELECT policy "so the app can check": now strangers can read tokens | Write the SQL that lists how many tokens each user has (run it as the owner in the SQL Editor) |
+
+### Foreground, background, closed
+| Notme is… | What happens to an alert |
+|---|---|
+| Open on screen | Shown because of `presentationOptions`; Realtime updates the inbox too |
+| In the background | Android shows it on the `money-alerts` channel |
+| Closed (swiped away) | Android still shows it; tapping starts Notme. Whether the tap then opens the request is **not confirmed yet**: the plugin docs don't say if the tap event survives a cold start (checked in the Phase 3/4 phone test) |
+
+**Honest limit:** delivery is best effort. Battery savers (common on realme, Xiaomi, Vivo, Oppo), Do Not Disturb, no network or a refused permission can delay or drop an alert. That's why the elder's timeout warning stays.
+
+### Tracing one example: Ravi turns alerts on
+1. Ravi signs in on his phone → `SignedInApp` calls `usePushNotifications(true, openRequest)` → it creates the channel and reads the permission: `'prompt'`.
+2. The banner explains; Ravi taps **Turn on alerts** → `requestPushPermission()` → Android's dialog → **Allow** → `'granted'`.
+3. The hook calls `startPush()`: it adds the listeners, then `PushNotifications.register()` → FCM sends back the token → `onToken` → `registerPushToken(token)` → `rpc('register_push_token', { p_token })`.
+4. In Postgres the function checks Ravi is signed in, is a family account and the token looks valid, then upserts `(token, Ravi's id)`.
+5. Later Ravi taps an alert carrying `request_id` → `pushNotificationActionPerformed` → `openRequest(id)` → the request screen.
+6. Ravi signs out → `forgetDevice()` → `unregister_push_token` deletes his row → then the normal sign-out.
+
+### Phase 3 (onsite) exercises (no AI; answers aren't included)
+1. In the Firebase console, send a test message while Notme is **closed**, then while it's **open**. Explain why both show, naming the two settings responsible.
+2. Remove `'alert'` from `presentationOptions`, sync, and predict what changes before you test it.
+3. Write down what an attacker could do if `push_tokens` had a policy `using (true)` for `authenticated`, and which `rls_checks.sql` row would fail.
+
+### Phase 3 (onsite) self-test
+1. What is a device token, and who gives it to the phone?
+2. Why does Notme ask for notification permission only after a tap?
+3. Why can't a signed-in user read `push_tokens`, and who can?
+4. What does importance 5 on a channel mean?
+5. Why is the token removed before sign-out, not after?
 
 ## 16. Supabase Edge Functions and server-only secrets  *(onsite Phase 4)*
 Planned: what runs on the phone vs on a server; why an APK can't keep a secret (anyone can unzip it); Edge Function secrets; verifying the caller's login inside the function; why the receiver comes from the database and never from the request body; FCM HTTP v1 and OAuth access tokens; "at most once" alerts with `alert_sent_at` (idempotency again); what the elder sees if the alert can't be sent.
@@ -1668,3 +1738,7 @@ Planned: an Android failure-mode table from real tests (app closed, phone locked
 - **Capacitor plugin:** a package that gives JavaScript access to a phone feature (here `@capacitor/app` for the Back button).
 - **Stale closure:** a function that still sees old values from when it was created; fixed here with a "latest" ref.
 - **Minimise:** send the app to the background without closing it (like pressing Home).
+- **`google-services.json`:** the file that connects the Android app to its Firebase project.
+- **Importance (channel):** how loudly Android presents a channel's notifications; 5 = sound + banner.
+- **Upsert:** insert a row, or update it if one with the same key already exists (`insert … on conflict … do update`).
+- **Heads-up notification:** the banner that drops down over whatever app is open.

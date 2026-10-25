@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { redeemPairingCode, createPairingCode } from './pairing'
 import { createMyProfile } from './profile'
+import { registerPushToken, unregisterPushToken } from './pushTokens'
 import { createMoneyRequest, listMyRequests, respondToRequest } from './requests'
 
 const row = {
@@ -62,6 +63,14 @@ describe('what the browser sends', () => {
     rpc.mockResolvedValue({ data: {}, error: null })
     await redeemPairingCode('p38s-p4xs')
     expect(rpc).toHaveBeenLastCalledWith('redeem_pairing_code', { p_code: 'p38s-p4xs' })
+  })
+
+  it('push token (onsite): only the token, never a user id', async () => {
+    rpc.mockResolvedValue({ data: null, error: null })
+    await registerPushToken('fcm-token-abc')
+    expect(rpc).toHaveBeenLastCalledWith('register_push_token', { p_token: 'fcm-token-abc' })
+    await unregisterPushToken('fcm-token-abc')
+    expect(rpc).toHaveBeenLastCalledWith('unregister_push_token', { p_token: 'fcm-token-abc' })
   })
 
   it('list requests: no user filter is sent (Row Level Security decides)', async () => {

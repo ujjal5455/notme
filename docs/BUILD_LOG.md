@@ -488,6 +488,50 @@ Committed as `5edc633` `(onsite)`; `985e4fd` `(onsite)` added `*.bat text eol=cr
 
 **Not checked by the AI assistant:** the new Back behaviour itself, because it only applies after signing in, and the AI assistant doesn't sign in. It is README Phase 2 test step 5, for the user on the realme phone.
 
-**Re-checked by the user on the realme GT 6T (reported in chat, 2026-10-24):** "Back works on the phone now: request screen goes home, home minimises the app." Phase 2 complete.
+**Re-checked by the user on the realme GT 6T (reported in chat, 2026-10-24):** "Back works on the phone now: request screen goes home, home minimises the app." Phase 2 complete. Committed as `279124a` `(onsite)`.
+
+---
+
+## 2026-10-24 · Phase 3 (Notme) — Push notifications on the family phone `[onsite]` *(code done; Firebase setup and phone test pending)*
+
+**Docs read (2026-10-24):** Capacitor push-notifications API (permissions, `createChannel` fields, listeners, `presentationOptions`: default only `badge`, so nothing shows in the foreground on Android unless `alert` is added; manifest meta-data for the default channel), Firebase "send a test message" guide (Messaging → campaign → *Send test message* with a registration token). Not stated in the docs: whether a tap on a notification that **cold-starts** the app still reaches `pushNotificationActionPerformed` — to be seen in the phone test.
+
+**Done**
+- `@capacitor/push-notifications` **8.1.3** (MIT).
+- New `supabase/migrations/0007_push_tokens.sql`: `push_tokens (token PK, user_id → profiles, updated_at)`, RLS on, **no policies and no grants** for `anon`/`authenticated`; `register_push_token(p_token)` (family accounts only, length 20–4096, upsert; a token registered by another account moves to the caller) and `unregister_push_token(p_token)` (deletes only the caller's own row, silently).
+- `rls_checks.sql`: 8 new checks (family B saves its token; B cannot read the table; direct INSERT blocked; malformed token refused; elder cannot save a token; stranger C cannot delete B's token; logged-out visitor refused; B removes its own token) → **45**. `deploy_checks.sql`: `push_tokens` in RLS/anon checks, "authenticated has no rights", "no policies on private table", both new functions → **36 rows**.
+- App: `src/lib/push.ts` (plugin wrapper: permission, `money-alerts` channel at importance 5, listeners, register), `src/lib/api/pushTokens.ts`, `src/hooks/usePushNotifications.ts` (family + Android only; never asks on start; saves the token; tap → `openRequest`; `forgetDevice()` before sign-out, never blocking it), `src/components/NotificationsBanner.tsx` (explain + **Turn on alerts**; "Alerts are off" + Settings path; set-up errors). `SignedInApp` shows the banner and unregisters the token before sign-out.
+- Android: `POST_NOTIFICATIONS` permission and `default_notification_channel_id` = `money-alerts` in the manifest (+ `strings.xml`); `capacitor.config.ts` `presentationOptions: ['alert', 'sound']`.
+- Tests: 4 banner tests, 8 hook tests (plugin wrapper and token API faked), 1 API test (only the token is sent); the existing sign-out test now waits, because sign-out first removes the token.
+- README "Push notifications" section (Supabase step, Firebase steps, build, battery settings, 7-step phone test, crash warning without `google-services.json`), 3 new limitations, new check counts; LEARNING_GUIDE §15; DISCLOSURE (plugin, Firebase Cloud Messaging, second Supabase project).
+
+**Checks run by the AI assistant (2026-10-24, about 23:35 IST)**
+
+| Check | Result |
+|---|---|
+| `npm run typecheck`, `npm run lint` | ✅ |
+| `npm test` | ✅ 17 files, **105/105** |
+| `npm run android:sync` | ✅ 2 plugins: `@capacitor/app@8.1.2`, `@capacitor/push-notifications@8.1.3` |
+| `gradlew assembleDebug` (JBR 21), **without** `google-services.json` | ✅ BUILD SUCCESSFUL in 1 m 7 s; merged manifest has `POST_NOTIFICATIONS`, the default channel and Firebase's messaging service |
+
+**Not run yet:** 0007 and both check scripts on the Notme Supabase project (user); Firebase project and `google-services.json` (user); the Phase 3 phone test (user). No notification has been received yet.
+
+**Known risk:** a build without `google-services.json` has no Firebase set-up; tapping **Turn on alerts** there can crash the app. README warns about it.
+
+**AI assistance disclosure:** migration, checks, code, tests and docs by the AI assistant under the user's direction.
+
+**Set-up and test by the user (2026-10-24, reported in chat):**
+- Firebase project `notme-demo` (Spark, free) created; Android app `org.notme.demo` registered; `google-services.json` placed in `android/app/`. The AI assistant checked the file: project `notme-demo`, package `org.notme.demo`, ignored by git (`.gitignore:25`); `npm run android:sync` ✅. The Firebase "Add Firebase SDK" code was **not** copied (the Capacitor template already has the Google Services plugin; no Analytics SDK added).
+- 0007 run in the Supabase SQL Editor; the editor offered "Run and enable RLS" for the new table, which only repeats the `enable row level security` the file already contains.
+- Asked to confirm `rls_checks` 45 PASS, `deploy_checks` 36 PASS, a Firebase console test message with Notme open / in the background / closed, tapping it, and the token being removed on sign-out, the user answered: **"all worked"**.
+- The AI assistant could not confirm this independently: the phone was no longer connected over USB when checked. Whether a tap with `request_id` opens that request from a **closed** app was not reported separately.
+
+---
+
+## 2026-10-24 · New request from the user: alarm-like sound and an overlay `[onsite]`
+
+The user asked for (1) a continuous, alarm-like alert sound and (2) a full-screen **overlay warning with an alert sound** on the family member's phone when a request arrives. This is beyond the MVP in the project brief (a stretch item, approved by the user). Options and a recommended order were proposed; nothing built yet.
+
+Later the same night (2026-10-25) the user also asked for **vibration** when sound isn't possible, and an **elder quick-access button**: during a scam call the elder taps a floating button that opens Notme. All four are recorded as backlog items E1–E4 in `docs/PLAN.md` §9, with options and the open decisions (native Java for the alarm channel; which quick-access option). Nothing built yet; Phase 4 recommended first. **Decision (user, 2026-10-25):** E4 = option (a), the always-present notification ("Money call? Tap to check with family"), not the floating bubble that needs "Display over other apps".
 
 **AI assistance disclosure:** setup checks, config, scripts and docs by the AI assistant under the user's direction.

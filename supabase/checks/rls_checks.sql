@@ -1,5 +1,5 @@
 -- =====================================================================
--- Notme security checks (run AFTER migrations 0001–0006)
+-- Notme security checks (run AFTER migrations 0001–0007)
 --
 -- HOW TO USE: paste this whole file into the Supabase SQL Editor and
 -- click Run. The result table should show PASS on every row.
@@ -356,6 +356,67 @@ begin
   select status into v_status from public.money_requests where id = v_req2.id;
   perform notme_test.record('respond: expired request stays pending (shown as expired)',
     v_status = 'pending', v_status);
+
+  -- ---------------------------------------------------------------
+  -- 7. Push-notification device tokens (0007, onsite)
+  -- ---------------------------------------------------------------
+  perform notme_test.act_as(v_family_b);
+  begin
+    perform public.register_push_token('test-token-for-family-b-0001');
+    perform notme_test.record('push: family B saves its device token', true);
+  exception when others then
+    perform notme_test.record('push: family B saves its device token', false, sqlerrm);
+  end;
+
+  begin
+    select count(*) into v_n from public.push_tokens;
+    perform notme_test.record('push: family B cannot read the token table', false, v_n || ' rows readable');
+  exception when insufficient_privilege then
+    perform notme_test.record('push: family B cannot read the token table', true, sqlerrm);
+  end;
+
+  begin
+    insert into public.push_tokens (token, user_id) values ('sneaky-token-for-someone-0001', v_family_b);
+    perform notme_test.record('push: direct INSERT is blocked', false, 'insert ran');
+  exception when insufficient_privilege then
+    perform notme_test.record('push: direct INSERT is blocked', true, sqlerrm);
+  end;
+
+  begin
+    perform public.register_push_token('short');
+    perform notme_test.record('push: a malformed token is refused', false, 'call succeeded');
+  exception when others then
+    perform notme_test.record('push: a malformed token is refused', true, sqlerrm);
+  end;
+
+  perform notme_test.act_as(v_elder_a);
+  begin
+    perform public.register_push_token('test-token-for-elder-a-00001');
+    perform notme_test.record('push: an elder account cannot save a token', false, 'call succeeded');
+  exception when others then
+    perform notme_test.record('push: an elder account cannot save a token', true, sqlerrm);
+  end;
+
+  perform notme_test.act_as(v_family_c);
+  perform public.unregister_push_token('test-token-for-family-b-0001');
+  reset role;
+  select count(*) into v_n from public.push_tokens
+    where token = 'test-token-for-family-b-0001' and user_id = v_family_b;
+  perform notme_test.record('push: stranger C cannot delete family B''s token', v_n = 1, v_n || ' row(s) left');
+
+  perform notme_test.act_as_anon();
+  begin
+    perform public.register_push_token('test-token-for-anon-0000001');
+    perform notme_test.record('push: logged-out visitor cannot save a token', false, 'call succeeded');
+  exception when insufficient_privilege then
+    perform notme_test.record('push: logged-out visitor cannot save a token', true, sqlerrm);
+  end;
+
+  perform notme_test.act_as(v_family_b);
+  perform public.unregister_push_token('test-token-for-family-b-0001');
+  reset role;
+  select count(*) into v_n from public.push_tokens where token = 'test-token-for-family-b-0001';
+  perform notme_test.record('push: family B removes its own token (sign-out)', v_n = 0, v_n || ' row(s) left');
 
   -- ---------------------------------------------------------------
   -- Cleanup (as owner): remove test users; CASCADE removes their data.

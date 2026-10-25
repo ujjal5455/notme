@@ -6,20 +6,26 @@
 -- =====================================================================
 
 with
+-- Tables the app may READ (through RLS).
 tables(name) as (
   values ('profiles'), ('family_links'), ('pairing_codes'), ('money_requests')
+),
+-- Tables app users may not touch at all (0007): only server-side code reads them.
+private_tables(name) as (
+  values ('push_tokens')
 ),
 fns(name, definer) as (
   values ('create_my_profile', true), ('create_pairing_code', true),
          ('redeem_pairing_code', true), ('create_money_request', true),
-         ('respond_to_request', true), ('server_now', false)
+         ('respond_to_request', true), ('server_now', false),
+         ('register_push_token', true), ('unregister_push_token', true)
 ),
 checks(check_name, ok, detail) as (
   -- 1. Row Level Security is on for every Notme table.
   select 'RLS enabled: ' || t.name,
          coalesce(c.relrowsecurity, false),
          case when c.oid is null then 'table missing' else 'rls = ' || c.relrowsecurity end
-  from tables t
+  from (select name from tables union all select name from private_tables) t
   left join pg_class c on c.relname = t.name and c.relkind = 'r'
        and c.relnamespace = 'public'::regnamespace
 
@@ -30,7 +36,16 @@ checks(check_name, ok, detail) as (
                      where g.table_schema = 'public' and g.table_name = t.name and g.grantee = 'anon'),
          coalesce((select string_agg(privilege_type, ', ') from information_schema.role_table_grants g
                    where g.table_schema = 'public' and g.table_name = t.name and g.grantee = 'anon'), 'none')
-  from tables t
+  from (select name from tables union all select name from private_tables) t
+
+  union all
+  -- 2b. Signed-in users have no rights at all on private tables (0007).
+  select 'authenticated has no rights on: ' || t.name,
+         not exists (select 1 from information_schema.role_table_grants g
+                     where g.table_schema = 'public' and g.table_name = t.name and g.grantee = 'authenticated'),
+         coalesce((select string_agg(privilege_type, ', ') from information_schema.role_table_grants g
+                   where g.table_schema = 'public' and g.table_name = t.name and g.grantee = 'authenticated'), 'none')
+  from private_tables t
 
   union all
   -- 3. Signed-in users may only READ tables (writes go through functions).
@@ -50,6 +65,14 @@ checks(check_name, ok, detail) as (
          coalesce((select string_agg(p.tablename || ':' || p.cmd, ', ') from pg_policies p
                    where p.schemaname = 'public' and p.tablename in (select name from tables)
                      and p.cmd <> 'SELECT'), 'none')
+
+  union all
+  -- 4b. Private tables have no policies at all (0007).
+  select 'no policies on private table: ' || t.name,
+         not exists (select 1 from pg_policies p where p.schemaname = 'public' and p.tablename = t.name),
+         coalesce((select string_agg(p.policyname, ', ') from pg_policies p
+                   where p.schemaname = 'public' and p.tablename = t.name), 'none')
+  from private_tables t
 
   union all
   -- 5. Each function exists; anon can't call it; signed-in users can.

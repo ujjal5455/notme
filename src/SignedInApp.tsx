@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { ConnectionNotice } from './components/ConnectionNotice'
 import { Layout } from './components/Layout'
+import { NotificationsBanner } from './components/NotificationsBanner'
 import { REQUEST_TIMEOUT_SECONDS } from './config'
 import { useBackButton } from './hooks/useBackButton'
 import { useMyRequests } from './hooks/useMyRequests'
 import { useNewWarnings } from './hooks/useNewWarnings'
 import { useNow } from './hooks/useNow'
+import { usePushNotifications } from './hooks/usePushNotifications'
 import { useRequestUpdates } from './hooks/useRequestUpdates'
 import { useServerOffset } from './hooks/useServerOffset'
 import { unlockAlertSound } from './lib/alertSound'
@@ -92,6 +94,15 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
     goTo({ name: 'requestDetail', requestId })
   }
 
+  // Family member on Android: alerts that ring the phone, and tapping one opens the request.
+  const push = usePushNotifications(role === 'family', openRequest)
+
+  /** Remove this phone's alert token first (needs the session), then sign out. */
+  async function handleSignOut() {
+    await push.forgetDevice()
+    onSignOut()
+  }
+
   function findPerson(id: string): Profile | undefined {
     return [profile, linkedPerson].find((person) => person.id === id)
   }
@@ -176,10 +187,16 @@ export function SignedInApp({ profile, linkedPerson, onSignOut }: SignedInAppPro
 
   return (
     <Layout
-      account={{ displayName: profile.displayName, onSignOut }}
+      account={{ displayName: profile.displayName, onSignOut: () => void handleSignOut() }}
       nav={{ role, currentView: view.name, onNavigate: goTo }}
     >
       <ConnectionNotice live={live} loadError={error} onRetry={checkNow} />
+      <NotificationsBanner
+        permission={push.permission}
+        error={push.error}
+        elderName={elder.displayName}
+        onTurnOn={() => void push.turnOn()}
+      />
       {showLoading ? (
         <p className="loading" role="status">
           Loading your requests…

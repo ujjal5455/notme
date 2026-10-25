@@ -11,6 +11,13 @@ const config: CapacitorConfig = {
   // Where `npm run build` (Vite) puts the finished web files. `npx cap sync`
   // copies this folder into the Android project.
   webDir: 'dist',
+  plugins: {
+    PushNotifications: {
+      // Also show the alert (with sound) while Notme is open on screen.
+      // Capacitor's default shows nothing in the foreground on Android.
+      presentationOptions: ['alert', 'sound'],
+    },
+  },
 }
 
 export default config

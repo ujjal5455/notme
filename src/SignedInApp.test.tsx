@@ -58,7 +58,8 @@ describe('SignedInApp (Phase 5: requests saved in Supabase)', () => {
     await renderAsElder(onSignOut)
     expect(screen.queryByRole('button', { name: 'Family' })).not.toBeInTheDocument()
     click('Sign out')
-    expect(onSignOut).toHaveBeenCalledTimes(1)
+    // Async since Phase 3 (onsite): the phone's alert token is removed first.
+    await waitFor(() => expect(onSignOut).toHaveBeenCalledTimes(1))
   })
 
   it('elder creates a request: it is saved, and the screen waits for Ravi', async () => {
